@@ -72,12 +72,12 @@ nodes/<node_name>/
 └── node.toml          # node metadata, when useful
 ```
 
-Rust-heavy nodes are implemented in `crates/nodes/<node_name>` and launched from the matching `nodes/<node_name>` directory.
+Rust-heavy nodes are implemented in `crates/<node_name>` and launched from the matching `nodes/<node_name>` directory.
 
 ## Rust Node Crates
 
 ```text
-crates/nodes/
+crates/
 ├── cpal_capture/
 ├── cpal_sink/
 └── media_graph/

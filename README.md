@@ -24,6 +24,6 @@ Shared Python contracts and helpers live under `src/fluent_audio`.
 
 Executable DORA nodes live under `nodes`. A node is a process boundary, so mixed-language nodes are not forced into the Python package.
 
-Rust node crates live under `crates/nodes`.
+Rust-heavy node crates live under `crates`.
 
 See [docs/architecture/directory-structure.md](docs/architecture/directory-structure.md).
