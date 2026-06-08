@@ -31,6 +31,12 @@ from fluent_audio.dora import (
     validate_dora_audio_final_marker,
     validate_dora_audio_metadata,
 )
+from nodes.perception.nemotron_streaming.backend import (
+    DEFAULT_NEMOTRON_MODEL_NAME,
+    NemotronBackendError,
+    NemotronBackendSettings,
+    build_nemotron_backend,
+)
 from nodes.perception.nemotron_streaming.logic import (
     NemotronStreamingConfig,
     NemotronStreamingError,
@@ -103,6 +109,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--channels", type=int, default=1)
     parser.add_argument("--sample-format", default="s16le")
     parser.add_argument("--channel-layout", default="interleaved")
+    parser.add_argument("--backend", choices=["nemo"], required=True)
+    parser.add_argument("--model-name", default=DEFAULT_NEMOTRON_MODEL_NAME)
+    parser.add_argument("--target-lang", default="auto")
+    parser.add_argument("--strip-lang-tags", action="store_true", default=True)
+    parser.add_argument("--keep-lang-tags", action="store_true")
+    parser.add_argument("--att-context-right-frames", type=int, default=3)
+    parser.add_argument("--cuda-device", type=int)
     return parser
 
 
@@ -112,11 +125,43 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.dora:
         parser.error("nemotron_streaming requires --dora")
 
-    raise NemotronStreamingNodeError(
-        "nemotron_streaming CLI backend is not wired yet. The DORA event loop "
-        "is implemented and tested via run_nemotron_streaming_events(); green "
-        "status requires selecting and smoke-testing the NeMo backend on this "
-        "machine."
+    config = _node_config_from_args(args)
+    backend_settings = _backend_settings_from_args(args)
+    try:
+        backend = build_nemotron_backend(backend_settings)
+    except NemotronBackendError as exc:
+        raise NemotronStreamingNodeError(str(exc)) from exc
+
+    from dora import Node
+
+    summary = run_nemotron_streaming_events(Node(), config, backend)
+    sys.stdout.write(summary.model_dump_json())
+    sys.stdout.write("\n")
+    return 0
+
+
+def _node_config_from_args(args: argparse.Namespace) -> NemotronStreamingNodeConfig:
+    return NemotronStreamingNodeConfig(
+        input_audio_source_id=args.input_audio_source_id,
+        input_audio_stream_id=args.input_audio_stream_id,
+        session_id=args.session_id,
+        output_stream_id=args.output_stream_id,
+        prebuffer_frames=args.prebuffer_frames,
+        sample_rate_hz=args.sample_rate_hz,
+        channels=args.channels,
+        sample_format=args.sample_format,
+        channel_layout=args.channel_layout,
+    )
+
+
+def _backend_settings_from_args(args: argparse.Namespace) -> NemotronBackendSettings:
+    return NemotronBackendSettings(
+        backend=args.backend,
+        model_name=args.model_name,
+        target_lang=args.target_lang,
+        strip_lang_tags=not args.keep_lang_tags if args.keep_lang_tags else args.strip_lang_tags,
+        att_context_right_frames=args.att_context_right_frames,
+        cuda_device=args.cuda_device,
     )
 
 

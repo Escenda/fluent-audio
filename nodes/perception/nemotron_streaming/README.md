@@ -4,9 +4,10 @@ Owns streaming ASR session orchestration for a Nemotron-compatible backend.
 
 ## Current status
 
-Yellow. The DORA node boundary and session/prebuffer logic are implemented and tested,
-but the actual NeMo/Nemotron backend is not wired or smoke-tested yet. Do not mark this
-node green until the real model runs on target hardware.
+Yellow. The DORA node boundary, session/prebuffer logic, and explicit NeMo backend
+configuration surface are implemented and tested, but the actual NeMo/Nemotron backend is
+not wired or smoke-tested yet. Do not mark this node green until the real model runs on
+target hardware.
 
 ## DORA ids
 
@@ -44,10 +45,33 @@ The node currently:
 - rejects duplicate starts, stop/cancel without an active turn, mismatched ids, stream mismatch,
   control sequence discontinuity, audio discontinuity, and audio final while a turn is active
 - emits a transcript stream final marker only after explicit audio completion
+- validates explicit NeMo backend settings through `--backend nemo`
+
+## CLI backend surface
+
+The CLI requires an explicit backend:
+
+```bash
+python nodes/perception/nemotron_streaming/main.py \
+  --dora \
+  --input-audio-source-id media_graph \
+  --input-audio-stream-id audio/asr/input \
+  --session-id session-1 \
+  --output-stream-id transcript/main \
+  --backend nemo \
+  --model-name nvidia/nemotron-3.5-asr-streaming-0.6b \
+  --target-lang auto \
+  --att-context-right-frames 3
+```
+
+`--att-context-right-frames` must be one of `0`, `1`, `3`, `6`, or `13`,
+corresponding to 80 ms, 160 ms, 320 ms, 560 ms, and 1120 ms chunk settings.
+
+The command currently fails closed after validation because the real NeMo runtime is not wired.
 
 ## Not implemented yet
 
-- NeMo/PyTorch dependency profile for this target machine
+- PyTorch/NeMo dependency installation for this target machine
 - `nvidia/nemotron-3.5-asr-streaming-0.6b` model download/cache setup
 - real cache-aware FastConformer-RNNT backend wiring
 - target-hardware streaming smoke
@@ -63,10 +87,12 @@ Current partial verification:
 
 ```bash
 uv run --extra dev --extra dora python -m pytest \
+  tests/nodes/perception/test_nemotron_streaming_backend.py \
   tests/nodes/perception/test_nemotron_streaming_logic.py \
   tests/nodes/perception/test_nemotron_streaming_node.py
 uv run --extra dev --extra dora python -m ruff check \
   nodes/perception/nemotron_streaming \
+  tests/nodes/perception/test_nemotron_streaming_backend.py \
   tests/nodes/perception/test_nemotron_streaming_logic.py \
   tests/nodes/perception/test_nemotron_streaming_node.py
 ```
