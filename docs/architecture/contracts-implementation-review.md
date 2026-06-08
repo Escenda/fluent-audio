@@ -1,5 +1,9 @@
 # Contracts Implementation Review
 
+Status: resolved by commit `b62bb9c` (`Implement fluent audio contracts`).
+
+This document is kept as audit history for earlier implementation candidates that were not green.
+
 Review target: current uncommitted `src/fluent_audio/contracts/` implementation candidate.
 
 ## Verdict
@@ -95,3 +99,25 @@ Do not implement raw_pcm_source/sink yet.
 Do not change nodes/ or dataflows/.
 Do not introduce Any, dict[str, Any], or object.
 ```
+
+## Resolution
+
+Commit `b62bb9c` added the required contract modules and updated [build-plan.md](build-plan.md) so `contracts` is Green.
+
+Verified after the commit:
+
+```bash
+uv run --extra dev python -c "import fluent_audio; print(fluent_audio.__file__)"
+uv run --extra dev python -m pytest tests/contracts
+uv run --extra dev python -m ruff check .
+grep -R "Any\\|dict\\[str\\|object\\|type: ignore" -n src/fluent_audio tests/contracts || true
+grep -R '"sequence"\\|sequence=' -n src/fluent_audio/contracts tests/contracts || true
+```
+
+Results:
+
+- package import passed
+- `tests/contracts`: 41 passed
+- ruff passed
+- no `Any`, `dict[str, Any]`, `object`, or `type: ignore` matches
+- no old `"sequence"` / `sequence=` contract payload fields remain; `final_sequence` remains only as the explicit playback terminal field
