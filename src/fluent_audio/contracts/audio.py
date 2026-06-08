@@ -8,7 +8,6 @@ from pydantic import (
     Field,
     StrictBytes,
     StringConstraints,
-    computed_field,
     model_validator,
 )
 
@@ -35,7 +34,6 @@ class AudioFormat(BaseModel):
     sample_format: SampleFormat = "s16le"
     channel_layout: ChannelLayout = "interleaved"
 
-    @computed_field
     @property
     def bytes_per_sample(self) -> int:
         if self.sample_format == "s16le":
@@ -44,7 +42,6 @@ class AudioFormat(BaseModel):
             return 4
         raise AudioContractError(f"Unsupported sample format: {self.sample_format}")
 
-    @computed_field
     @property
     def frame_size_bytes(self) -> int:
         return self.channels * self.bytes_per_sample
@@ -60,7 +57,7 @@ class AudioChunk(BaseModel):
     seq: int = Field(ge=0)
     sample_index: int = Field(ge=0)
     capture_time_ns: int = Field(ge=0)
-    frame_count: int = Field(ge=0)
+    frame_count: int = Field(gt=0)
     format: AudioFormat
     payload: StrictBytes
 
@@ -76,17 +73,14 @@ class AudioChunk(BaseModel):
             )
         return self
 
-    @computed_field
     @property
     def payload_size_bytes(self) -> int:
         return len(self.payload)
 
-    @computed_field
     @property
     def next_seq(self) -> int:
         return self.seq + 1
 
-    @computed_field
     @property
     def next_sample_index(self) -> int:
         return self.sample_index + self.frame_count

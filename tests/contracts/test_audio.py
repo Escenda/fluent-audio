@@ -44,6 +44,15 @@ def test_audio_format_byte_sizes() -> None:
     assert f32_stereo.frame_size_bytes == 8
 
 
+def test_audio_format_dump_roundtrips_without_computed_helpers() -> None:
+    audio_format = AudioFormat(sample_rate_hz=16_000, channels=1)
+    dumped = audio_format.model_dump()
+
+    assert "bytes_per_sample" not in dumped
+    assert "frame_size_bytes" not in dumped
+    assert AudioFormat.model_validate(dumped) == audio_format
+
+
 def test_audio_chunk_accepts_s16le_payload() -> None:
     chunk = _chunk(frame_count=160)
 
@@ -58,6 +67,18 @@ def test_audio_chunk_accepts_f32le_payload() -> None:
 
     assert chunk.format.bytes_per_sample == 4
     assert chunk.payload_size_bytes == 512
+
+
+def test_audio_chunk_dump_roundtrips_without_computed_helpers() -> None:
+    chunk = _chunk(frame_count=1, payload=b"\x00\x00")
+    dumped = chunk.model_dump()
+
+    assert "payload_size_bytes" not in dumped
+    assert "next_seq" not in dumped
+    assert "next_sample_index" not in dumped
+    assert "bytes_per_sample" not in dumped["format"]
+    assert "frame_size_bytes" not in dumped["format"]
+    assert AudioChunk.model_validate(dumped) == chunk
 
 
 def test_audio_format_rejects_zero_or_negative_shape() -> None:
@@ -95,6 +116,11 @@ def test_audio_chunk_rejects_empty_ids() -> None:
 def test_audio_chunk_rejects_payload_length_mismatch() -> None:
     with pytest.raises(ValidationError, match="payload size mismatch"):
         _chunk(frame_count=160, payload=b"\x00")
+
+
+def test_audio_chunk_rejects_zero_frame_empty_payload() -> None:
+    with pytest.raises(ValidationError):
+        _chunk(frame_count=0, payload=b"")
 
 
 def test_audio_chunk_rejects_text_payload_coercion() -> None:

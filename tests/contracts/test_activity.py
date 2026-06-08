@@ -41,6 +41,19 @@ def test_voice_activity_event_rejects_probability_outside_unit_interval() -> Non
         )
 
 
+def test_voice_activity_event_rejects_zero_frame_span() -> None:
+    with pytest.raises(ValidationError):
+        VoiceActivityEvent(
+            source_id="fixture",
+            stream_id="mic/main",
+            seq=0,
+            sample_index=0,
+            frame_count=0,
+            state="speech",
+            speech_probability=0.8,
+        )
+
+
 def test_turn_event_preserves_turn_correlation() -> None:
     event = TurnEvent(
         session_id="session-1",

@@ -18,7 +18,7 @@ class VoiceActivityEvent(BaseModel):
     stream_id: NonEmptyString
     seq: int = Field(ge=0)
     sample_index: int = Field(ge=0)
-    frame_count: int = Field(ge=0)
+    frame_count: int = Field(gt=0)
     state: VoiceActivityState
     speech_probability: float = Field(ge=0.0, le=1.0)
 
