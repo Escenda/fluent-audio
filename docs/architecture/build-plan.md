@@ -8,7 +8,7 @@ This document tracks bottom-up construction status for `fluent-audio`.
 - Yellow = scaffold / partial. Directory and README only, or implementation exists but is not verified.
 - Red = not implemented.
 
-Current state: repository scaffold, agreed directory structure, contracts, raw PCM source/sink DORA boundaries, and the offline DORA roundtrip dataflow are green. Later runtime implementation is not green yet.
+Current state: repository scaffold, agreed directory structure, contracts, raw PCM source/sink DORA boundaries, the offline DORA roundtrip dataflow, and CPAL capture/sink hardware smokes are green. `media_graph` and later runtime nodes remain yellow.
 
 ## Progress Graph
 
@@ -20,8 +20,8 @@ flowchart TD
     raw_pcm_source["raw_pcm_source<br>Green"]
     raw_pcm_sink["raw_pcm_sink<br>Green"]
     offline_roundtrip_dataflow["offline_roundtrip_dataflow<br>Green"]
-    cpal_capture["cpal_capture<br>Yellow"]
-    cpal_sink["cpal_sink<br>Yellow"]
+    cpal_capture["cpal_capture<br>Green"]
+    cpal_sink["cpal_sink<br>Green"]
     media_graph["media_graph<br>Yellow"]
     vad["vad<br>Yellow"]
     turn_detector["turn_detector<br>Yellow"]
@@ -56,8 +56,8 @@ flowchart TD
     classDef verified fill:#d9f7d9,stroke:#1b7f1b,color:#0f3d0f;
     classDef scaffold fill:#fff3bf,stroke:#b58900,color:#4a3600;
     classDef missing fill:#ffd6d6,stroke:#b00020,color:#4a0000;
-    class repo_scaffold,directory_structure,contracts,raw_pcm_source,raw_pcm_sink,offline_roundtrip_dataflow verified;
-    class cpal_capture,cpal_sink,media_graph,vad,turn_detector,nemotron_streaming,dialogue_engine,codex_app_server,tts_backend,playback_queue,ros2_bridge,web_session_projection scaffold;
+    class repo_scaffold,directory_structure,contracts,raw_pcm_source,raw_pcm_sink,offline_roundtrip_dataflow,cpal_capture,cpal_sink verified;
+    class media_graph,vad,turn_detector,nemotron_streaming,dialogue_engine,codex_app_server,tts_backend,playback_queue,ros2_bridge,web_session_projection scaffold;
 ```
 
 ## Progress Table
@@ -70,8 +70,8 @@ flowchart TD
 | `raw_pcm_source` | `nodes/io/sources/raw_pcm_source` | Green: reads explicit headerless PCM, emits DORA `audio` uint8 Arrow payloads with typed flat metadata, and sends an explicit final marker. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). Review gate: [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md). Current review: [raw-pcm-io-implementation-review.md](raw-pcm-io-implementation-review.md). | Reads headerless PCM with explicit format, emits ordered `AudioChunk` payloads, and rejects size/frame mismatches through the DORA node boundary. | `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io`; `uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/io tests/nodes/io`; `uv run --extra dora python -c "from dora import Node; print(Node)"` |
 | `raw_pcm_sink` | `nodes/io/sinks/raw_pcm_sink` | Green: receives DORA `audio` uint8 Arrow payloads, reconstructs `AudioChunk` through typed metadata, rejects stream/format/sequence violations, and writes exact PCM bytes. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). Review gate: [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md). Current review: [raw-pcm-io-implementation-review.md](raw-pcm-io-implementation-review.md). | Accepts explicit-format `AudioChunk`, rejects format/sequence/frame mismatches, and writes exact PCM bytes through the DORA node boundary. | `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io`; `uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/io tests/nodes/io`; `uv run --extra dora python -c "from dora import Node; print(Node)"` |
 | `offline_roundtrip_dataflow` | `dataflows/offline_roundtrip.yml` | Green: live DORA smoke runs source to sink, and fixture PCM roundtrips byte-for-byte. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Subagent prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). | Wires source to sink with explicit format and queue policy; fixture PCM roundtrips byte-for-byte through DORA. | `uvx --from dora-rs-cli dora run dataflows/offline_roundtrip.yml --uv`; `cmp tests/fixtures/offline/input.s16le artifacts/offline/output.s16le` |
-| `cpal_capture` | `nodes/io/sources/cpal_capture` | Yellow: node scaffold only. | Opens an explicit CPAL input device, reports selected config, and emits correctly sized `AudioChunk` frames without implicit fallback. | `dora run dataflows/cpal_capture_smoke.yml --uv` |
-| `cpal_sink` | `nodes/io/sinks/cpal_sink` | Yellow: node scaffold only. | Opens an explicit CPAL output device, consumes queue-owned audio, rejects format mismatch, and reports completion. | `dora run dataflows/cpal_sink_smoke.yml --uv` |
+| `cpal_capture` | `nodes/io/sources/cpal_capture` | Green: Rust CPAL input node opens explicit `alsa:hw:CARD=APE,DEV=0`, emits 25 typed DORA `audio` chunks, and sends an explicit final marker verified by `audio_probe`. | Opens an explicit CPAL input device, reports selected config, and emits correctly sized `AudioChunk` frames without implicit fallback. | `/home/aspa/.cargo/bin/cargo test --manifest-path nodes/io/shared/rust_audio_boundary/Cargo.toml`; `/home/aspa/.cargo/bin/cargo test --manifest-path nodes/io/sources/cpal_capture/Cargo.toml`; `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io`; `uv run --extra dev --extra dora python -m ruff check .`; `uvx --from dora-rs-cli dora build dataflows/cpal_capture_smoke.yml --uv --local`; `uvx --from dora-rs-cli dora run dataflows/cpal_capture_smoke.yml --uv` -> `{"chunks":25,"frames":12000,"bytes":48000,"final_seen":true}` |
+| `cpal_sink` | `nodes/io/sinks/cpal_sink` | Green: Rust CPAL output node opens explicit `alsa:hw:CARD=APE,DEV=0`, consumes silence from the DORA audio boundary, drains playback, and exits successfully. | Opens an explicit CPAL output device, consumes queue-owned audio, rejects format mismatch, and reports completion. | `/home/aspa/.cargo/bin/cargo test --manifest-path nodes/io/shared/rust_audio_boundary/Cargo.toml`; `/home/aspa/.cargo/bin/cargo test --manifest-path nodes/io/sinks/cpal_sink/Cargo.toml`; `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io`; `uv run --extra dev --extra dora python -m ruff check .`; `uvx --from dora-rs-cli dora build dataflows/cpal_sink_smoke.yml --uv --local`; `uvx --from dora-rs-cli dora run dataflows/cpal_sink_smoke.yml --uv` |
 | `media_graph` | `nodes/media_graph` | Yellow: node scaffold only. | Owns the GStreamer graph internally, supports explicit passthrough/resample/branch setup, and tears down cleanly. | `dora run dataflows/media_graph_passthrough.yml --uv` |
 | `vad` | `nodes/perception/vad` | Yellow: node scaffold only. | Consumes typed audio chunks and emits typed speech activity events on fixture audio. | `uv run pytest tests/nodes/perception/test_vad.py` |
 | `turn_detector` | `nodes/perception/turn_detector` | Yellow: node scaffold only. | Consumes audio/activity context and emits typed turn boundary candidates with deterministic transition fixtures. | `uv run pytest tests/nodes/perception/test_turn_detector.py` |

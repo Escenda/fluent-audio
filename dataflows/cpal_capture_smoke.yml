@@ -1,0 +1,16 @@
+nodes:
+  - id: cpal_capture
+    build: ../scripts/dora_cargo_build.sh ../nodes/io/sources/cpal_capture/Cargo.toml
+    path: ../nodes/io/sources/cpal_capture/target/debug/cpal_capture
+    args: --device-id alsa:hw:CARD=APE,DEV=0 --sample-rate-hz 48000 --channels 2 --sample-format s16le --channel-layout interleaved --chunk-frames 480 --buffer-size-frames 480 --queue-capacity-chunks 8 --source-id cpal_capture --stream-id audio/cpal_capture/smoke --start-seq 0 --start-sample-index 0 --start-capture-time-ns 0 --max-chunks 25 --capture-timeout-ms 2000
+    outputs:
+      - audio
+
+  - id: audio_probe
+    path: python
+    args: ../nodes/io/sinks/audio_probe/main.py --dora --sample-rate-hz 48000 --channels 2 --sample-format s16le --channel-layout interleaved --source-id cpal_capture --stream-id audio/cpal_capture/smoke --expected-chunks 25 --expected-frames 12000 --expected-bytes 48000
+    inputs:
+      audio:
+        source: cpal_capture/audio
+        queue_size: 8
+        queue_policy: backpressure
