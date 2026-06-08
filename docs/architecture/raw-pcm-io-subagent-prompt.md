@@ -7,6 +7,8 @@ Read these files first:
 - `AGENTS.md`
 - `docs/architecture/build-plan.md`
 - `docs/architecture/raw-pcm-io-implementation-task.md`
+- `docs/architecture/raw-pcm-io-review-gate.md`
+- `docs/architecture/raw-pcm-io-implementation-review.md`, if it exists
 - `src/fluent_audio/contracts/`
 
 ## Current State
@@ -27,6 +29,7 @@ raw_pcm_source
 ```
 
 Follow the full requirements in [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md).
+Your output will be reviewed against [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md).
 
 ## Allowed Write Paths
 
@@ -48,12 +51,14 @@ Do not touch:
 
 ## Green Rules
 
-You may mark `raw_pcm_source` and `raw_pcm_sink` Green only after:
+You may mark `raw_pcm_source` and `raw_pcm_sink` Green only after the review gate passes and these commands pass:
 
 ```bash
 uv run --extra dev python -m pytest tests/nodes/io
 uv run --extra dev python -m ruff check .
 ```
+
+Passing tests without the DORA process boundary required by [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md) is not enough.
 
 You may mark `offline_roundtrip_dataflow` Green only after an actual DORA dataflow smoke passes and output bytes compare exactly:
 

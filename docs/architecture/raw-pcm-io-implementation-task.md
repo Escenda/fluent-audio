@@ -140,7 +140,7 @@ Do not mark DORA dataflow green based only on pure unit tests.
 Only after all representative verification commands pass:
 
 - Update [build-plan.md](build-plan.md).
-- Change `raw_pcm_source` and `raw_pcm_sink` from Yellow to Green after their unit tests pass.
+- Change `raw_pcm_source` and `raw_pcm_sink` from Yellow to Green only after their unit tests pass and [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md) passes.
 - Change `offline_roundtrip_dataflow` from Yellow to Green only after the DORA dataflow smoke and byte comparison pass.
 - Keep CPAL and later runtime nodes Yellow.
 
