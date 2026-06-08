@@ -1,0 +1,14 @@
+nodes:
+  - id: raw_pcm_source
+    path: python
+    args: nodes/io/sources/raw_pcm_source/main.py --dora --input tests/fixtures/offline/input.s16le --sample-rate-hz 16000 --channels 1 --sample-format s16le --channel-layout interleaved --chunk-frames 2 --source-id offline_file --stream-id audio/offline/mono16k --start-seq 0 --start-sample-index 0 --start-capture-time-ns 0
+    outputs:
+      - audio
+
+  - id: raw_pcm_sink
+    path: python
+    args: nodes/io/sinks/raw_pcm_sink/main.py --dora --output artifacts/offline/output.s16le --sample-rate-hz 16000 --channels 1 --sample-format s16le --channel-layout interleaved --source-id offline_file --stream-id audio/offline/mono16k --overwrite
+    inputs:
+      audio:
+        source: raw_pcm_source/audio
+        queue_size: 8

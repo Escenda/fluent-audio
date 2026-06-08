@@ -57,6 +57,7 @@ class RawPcmReadConfig(BaseModel):
     stream_id: str = Field(min_length=1)
     start_seq: int = Field(default=0, ge=0)
     start_sample_index: int = Field(default=0, ge=0)
+    start_capture_time_ns: int = Field(ge=0)
 
 
 class RawPcmWriteConfig(BaseModel):
@@ -142,6 +143,24 @@ def capture_time_ns_for_sample_index(sample_index: int, sample_rate_hz: int) -> 
     return (sample_index * 1_000_000_000) // sample_rate_hz
 
 
+def capture_time_ns_for_frame_offset(
+    start_capture_time_ns: int,
+    frame_offset: int,
+    sample_rate_hz: int,
+) -> int:
+    """Return deterministic capture time for an offset from a configured start."""
+
+    if start_capture_time_ns < 0:
+        raise RawPcmError(
+            f"start_capture_time_ns must be non-negative, got {start_capture_time_ns}"
+        )
+    if frame_offset < 0:
+        raise RawPcmError(f"frame_offset must be non-negative, got {frame_offset}")
+    if sample_rate_hz <= 0:
+        raise RawPcmError(f"sample_rate_hz must be positive, got {sample_rate_hz}")
+    return start_capture_time_ns + (frame_offset * 1_000_000_000) // sample_rate_hz
+
+
 def iter_raw_pcm_chunks(config: RawPcmReadConfig) -> Iterator[AudioChunk]:
     """Read headerless PCM and yield validated ``AudioChunk`` values."""
 
@@ -183,8 +202,9 @@ def iter_raw_pcm_chunks(config: RawPcmReadConfig) -> Iterator[AudioChunk]:
                 stream_id=config.stream_id,
                 seq=seq,
                 sample_index=sample_index,
-                capture_time_ns=capture_time_ns_for_sample_index(
-                    sample_index,
+                capture_time_ns=capture_time_ns_for_frame_offset(
+                    config.start_capture_time_ns,
+                    sample_index - config.start_sample_index,
                     config.audio_format.sample_rate_hz,
                 ),
                 frame_count=frame_count,

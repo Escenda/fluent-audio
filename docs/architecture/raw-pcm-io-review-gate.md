@@ -17,6 +17,9 @@ Allowed changed paths:
 - `tests/nodes/io/`
 - `tests/fixtures/offline/`
 - `docs/architecture/build-plan.md`
+- `docs/architecture/raw-pcm-io-implementation-review.md`
+- `docs/architecture/raw-pcm-io-review-gate.md`
+- `docs/architecture/raw-pcm-io-subagent-prompt.md`
 
 Reject or request correction if the candidate changes:
 
@@ -54,7 +57,7 @@ Reject implementations that use `sequence` as a compatibility alias.
 `raw_pcm_source` must:
 
 - read only headerless PCM bytes
-- require explicit path, format, ids, `chunk_frames`, `start_seq`, `start_sample_index`, and `capture_time_ns`
+- require explicit path, format, ids, `chunk_frames`, `start_seq`, `start_sample_index`, and `start_capture_time_ns`
 - support `s16le` and `f32le`
 - reject missing file
 - reject invalid chunk size
@@ -107,6 +110,11 @@ Required tests:
 - sink rejects repeated sequence
 - sink rejects wrong `sample_index`
 - pure source-to-sink roundtrip writes byte-identical output
+- DORA encode/decode roundtrip
+- DORA decode rejects missing or invalid metadata
+- source DORA send uses bytes payload and flat metadata
+- sink DORA receive writes byte-identical output
+- source supports explicit starting capture time in ns
 
 ## Verification Commands
 
@@ -121,6 +129,18 @@ grep -R '"sequence"\\|sequence=' -n nodes/io src/fluent_audio/offline src/fluent
 ```
 
 `raw_pcm_source` and `raw_pcm_sink` may become Green only after these checks pass and the review checks above are satisfied.
+
+For the DORA boundary phase, also run:
+
+```bash
+uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io
+uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/io tests/nodes/io
+uv run --extra dora python -c "from dora import Node; print(Node)"
+uv run --extra dora dora --help
+```
+
+If the final command cannot spawn the `dora` CLI, report that explicitly and keep
+`offline_roundtrip_dataflow` Yellow.
 
 ## DORA Dataflow Green Rule
 

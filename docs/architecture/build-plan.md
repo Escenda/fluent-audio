@@ -8,7 +8,7 @@ This document tracks bottom-up construction status for `fluent-audio`.
 - Yellow = scaffold / partial. Directory and README only, or implementation exists but is not verified.
 - Red = not implemented.
 
-Current state: repository scaffold, agreed directory structure, and contracts are green. Raw PCM IO has an implementation candidate under review. DORA dataflow and later runtime implementation are not green yet.
+Current state: repository scaffold, agreed directory structure, contracts, and raw PCM source/sink DORA boundaries are green. The offline DORA dataflow exists but is still yellow until a live `dora run` smoke and byte comparison pass. Later runtime implementation is not green yet.
 
 ## Progress Graph
 
@@ -17,8 +17,8 @@ flowchart TD
     repo_scaffold["repo scaffold<br>Green"]
     directory_structure["directory structure<br>Green"]
     contracts["contracts<br>Green"]
-    raw_pcm_source["raw_pcm_source<br>Yellow"]
-    raw_pcm_sink["raw_pcm_sink<br>Yellow"]
+    raw_pcm_source["raw_pcm_source<br>Green"]
+    raw_pcm_sink["raw_pcm_sink<br>Green"]
     offline_roundtrip_dataflow["offline_roundtrip_dataflow<br>Yellow"]
     cpal_capture["cpal_capture<br>Yellow"]
     cpal_sink["cpal_sink<br>Yellow"]
@@ -56,8 +56,8 @@ flowchart TD
     classDef verified fill:#d9f7d9,stroke:#1b7f1b,color:#0f3d0f;
     classDef scaffold fill:#fff3bf,stroke:#b58900,color:#4a3600;
     classDef missing fill:#ffd6d6,stroke:#b00020,color:#4a0000;
-    class repo_scaffold,directory_structure,contracts verified;
-    class raw_pcm_source,raw_pcm_sink,offline_roundtrip_dataflow,cpal_capture,cpal_sink,media_graph,vad,turn_detector,nemotron_streaming,dialogue_engine,codex_app_server,tts_backend,playback_queue,ros2_bridge,web_session_projection scaffold;
+    class repo_scaffold,directory_structure,contracts,raw_pcm_source,raw_pcm_sink verified;
+    class offline_roundtrip_dataflow,cpal_capture,cpal_sink,media_graph,vad,turn_detector,nemotron_streaming,dialogue_engine,codex_app_server,tts_backend,playback_queue,ros2_bridge,web_session_projection scaffold;
 ```
 
 ## Progress Table
@@ -67,9 +67,9 @@ flowchart TD
 | `repo_scaffold` | repository root | Green: standalone public repository exists with Python package scaffold. | Public GitHub repo exists, package imports, and lint command passes. | `gh repo view Escenda/fluent-audio --json nameWithOwner,url,visibility`; `uv run --extra dev python -c "import fluent_audio; print(fluent_audio.__file__)"`; `uv run --extra dev python -m ruff check .` |
 | `directory_structure` | `nodes`, `src/fluent_audio`, `dataflows`, `docs` | Green: agreed responsibility layout exists. | Nodes are grouped only where the hierarchy has meaning; no top-level `crates/`; no empty tracked `tests/`. | `find nodes -maxdepth 4 -type d \| sort` |
 | `contracts` | `src/fluent_audio/contracts` | Green: Pydantic v2 contracts implemented for audio chunks, activity/turn events, ASR control, transcripts, dialogue/agent events, synthesis chunks, playback state, and session correlation. | Payload length, `seq`/sample continuity, capture time, format mismatch, serialized dump/validate roundtrip without computed helper fields, zero-frame audio span rejection, bounded probabilities/confidence, discriminated command/control variants, and correlation ids are verified. | `uv run --extra dev python -m pytest tests/contracts`; `uv run --extra dev python -m ruff check src/fluent_audio/contracts tests/contracts` |
-| `raw_pcm_source` | `nodes/io/sources/raw_pcm_source` | Yellow: implementation candidate exists but does not yet satisfy the review gate. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). Review gate: [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md). Current review: [raw-pcm-io-implementation-review.md](raw-pcm-io-implementation-review.md). | Reads headerless PCM with explicit format, emits ordered `AudioChunk` payloads, and rejects size/frame mismatches through the DORA node boundary. | `uv run --extra dev python -m pytest tests/nodes/io`; `uv run --extra dev python -m ruff check .` |
-| `raw_pcm_sink` | `nodes/io/sinks/raw_pcm_sink` | Yellow: implementation candidate exists but does not yet satisfy the review gate. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). Review gate: [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md). Current review: [raw-pcm-io-implementation-review.md](raw-pcm-io-implementation-review.md). | Accepts explicit-format `AudioChunk`, rejects format/sequence/frame mismatches, and writes exact PCM bytes through the DORA node boundary. | `uv run --extra dev python -m pytest tests/nodes/io`; `uv run --extra dev python -m ruff check .` |
-| `offline_roundtrip_dataflow` | `dataflows` | Yellow: dataflow directory scaffold only. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Subagent prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). | Wires source to sink with explicit format and queue policy; fixture PCM roundtrips byte-for-byte through DORA. | `dora run dataflows/offline_roundtrip.yml --uv`; `cmp tests/fixtures/offline/input.s16le artifacts/offline/output.s16le` |
+| `raw_pcm_source` | `nodes/io/sources/raw_pcm_source` | Green: reads explicit headerless PCM, emits DORA `audio` bytes payloads with typed flat metadata, and sends an explicit final marker. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). Review gate: [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md). Current review: [raw-pcm-io-implementation-review.md](raw-pcm-io-implementation-review.md). | Reads headerless PCM with explicit format, emits ordered `AudioChunk` payloads, and rejects size/frame mismatches through the DORA node boundary. | `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io`; `uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/io tests/nodes/io`; `uv run --extra dora python -c "from dora import Node; print(Node)"` |
+| `raw_pcm_sink` | `nodes/io/sinks/raw_pcm_sink` | Green: receives DORA `audio` bytes payloads, reconstructs `AudioChunk` through typed metadata, rejects stream/format/sequence violations, and writes exact PCM bytes. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). Review gate: [raw-pcm-io-review-gate.md](raw-pcm-io-review-gate.md). Current review: [raw-pcm-io-implementation-review.md](raw-pcm-io-implementation-review.md). | Accepts explicit-format `AudioChunk`, rejects format/sequence/frame mismatches, and writes exact PCM bytes through the DORA node boundary. | `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io`; `uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/io tests/nodes/io`; `uv run --extra dora python -c "from dora import Node; print(Node)"` |
+| `offline_roundtrip_dataflow` | `dataflows/offline_roundtrip.yml` | Yellow: dataflow wiring exists with explicit format and queue policy, but the local `dora` CLI executable is unavailable, so the live DORA smoke and byte comparison have not run. Task: [raw-pcm-io-implementation-task.md](raw-pcm-io-implementation-task.md). Subagent prompt: [raw-pcm-io-subagent-prompt.md](raw-pcm-io-subagent-prompt.md). | Wires source to sink with explicit format and queue policy; fixture PCM roundtrips byte-for-byte through DORA. | `dora run dataflows/offline_roundtrip.yml --uv`; `cmp tests/fixtures/offline/input.s16le artifacts/offline/output.s16le` |
 | `cpal_capture` | `nodes/io/sources/cpal_capture` | Yellow: node scaffold only. | Opens an explicit CPAL input device, reports selected config, and emits correctly sized `AudioChunk` frames without implicit fallback. | `dora run dataflows/cpal_capture_smoke.yml --uv` |
 | `cpal_sink` | `nodes/io/sinks/cpal_sink` | Yellow: node scaffold only. | Opens an explicit CPAL output device, consumes queue-owned audio, rejects format mismatch, and reports completion. | `dora run dataflows/cpal_sink_smoke.yml --uv` |
 | `media_graph` | `nodes/media_graph` | Yellow: node scaffold only. | Owns the GStreamer graph internally, supports explicit passthrough/resample/branch setup, and tears down cleanly. | `dora run dataflows/media_graph_passthrough.yml --uv` |
