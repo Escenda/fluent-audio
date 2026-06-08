@@ -1,1 +1,39 @@
 """Offline import, export, record, and replay helpers."""
+
+from fluent_audio.offline.raw_pcm import (
+    RawPcmChunkJsonRecord,
+    RawPcmChunkJsonlError,
+    RawPcmChunkValidationError,
+    RawPcmEmptyInputError,
+    RawPcmError,
+    RawPcmFileNotFoundError,
+    RawPcmFrameAlignmentError,
+    RawPcmOutputError,
+    RawPcmReadConfig,
+    RawPcmWriteConfig,
+    RawPcmWriteSummary,
+    capture_time_ns_for_sample_index,
+    iter_raw_pcm_chunk_jsonl,
+    iter_raw_pcm_chunks,
+    write_raw_pcm_chunk_jsonl,
+    write_raw_pcm_chunks,
+)
+
+__all__ = [
+    "RawPcmChunkJsonRecord",
+    "RawPcmChunkJsonlError",
+    "RawPcmChunkValidationError",
+    "RawPcmEmptyInputError",
+    "RawPcmError",
+    "RawPcmFileNotFoundError",
+    "RawPcmFrameAlignmentError",
+    "RawPcmOutputError",
+    "RawPcmReadConfig",
+    "RawPcmWriteConfig",
+    "RawPcmWriteSummary",
+    "capture_time_ns_for_sample_index",
+    "iter_raw_pcm_chunk_jsonl",
+    "iter_raw_pcm_chunks",
+    "write_raw_pcm_chunk_jsonl",
+    "write_raw_pcm_chunks",
+]
