@@ -42,46 +42,37 @@ src/fluent_audio/
 
 ```text
 nodes/
-├── offline/
-│   ├── raw_pcm_source/
-│   └── raw_pcm_sink/
-├── device/
-│   ├── cpal_capture/
-│   └── cpal_sink/
-├── media/
-│   └── media_graph/
-├── activity/
-│   ├── vad/
-│   ├── audio_window/
-│   └── turn_detector/
-├── asr/
-│   └── nemotron_streaming/
-├── dialogue/
-│   └── dialogue_engine/
-├── agent/
-│   └── codex_app_server_connector/
-├── tts/
-│   └── tts_backend/
-├── playback/
-│   └── playback_queue/
-└── bridges/
-    ├── ros2_bridge/
-    └── web_session_projection/
+├── raw_pcm_source/
+├── raw_pcm_sink/
+├── cpal_capture/
+├── cpal_sink/
+├── media_graph/
+├── vad/
+├── audio_window/
+├── turn_detector/
+├── nemotron_streaming/
+├── dialogue_engine/
+├── codex_app_server_connector/
+├── tts_backend/
+├── playback_queue/
+├── ros2_bridge/
+└── web_session_projection/
 ```
 
 Each node directory owns one process boundary. A node directory may be Python, Rust, or a thin launcher over a Rust crate.
+Do not add a category directory just to hold one node. Use `nodes/<node_name>` until there is a real reason to group multiple related nodes.
 
 Expected node directory shape:
 
 ```text
-nodes/<layer>/<node_name>/
+nodes/<node_name>/
 ├── README.md
 ├── main.py            # Python node, when applicable
 ├── config.py          # typed config, when applicable
 └── node.toml          # node metadata, when useful
 ```
 
-Rust-heavy nodes are implemented in `crates/nodes/<node_name>` and launched from the matching `nodes/<layer>/<node_name>` directory.
+Rust-heavy nodes are implemented in `crates/nodes/<node_name>` and launched from the matching `nodes/<node_name>` directory.
 
 ## Rust Node Crates
 
