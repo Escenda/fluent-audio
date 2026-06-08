@@ -85,6 +85,11 @@ def iter_dora_audio_input_chunks(events):
         event_type = _required_event_text(event, "type")
         if event_type == "STOP":
             break
+        if event_type == "INPUT_CLOSED":
+            input_id = _required_event_text(event, "id")
+            if input_id != "audio":
+                raise DoraAudioInputEventError(f"Unexpected DORA input id: {input_id!r}")
+            break
         if event_type != "INPUT":
             raise DoraAudioInputEventError(f"Unexpected DORA event type: {event_type!r}")
 

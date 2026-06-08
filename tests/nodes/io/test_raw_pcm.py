@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import pyarrow as pa
 from pydantic import ValidationError
 
 from fluent_audio.contracts import AudioChunk, AudioChunkContinuityError, AudioFormat
@@ -428,7 +429,7 @@ def test_dora_audio_encode_decode_roundtrip() -> None:
     payload, metadata = encode_audio_chunk_for_dora(chunk)
     decoded = decode_audio_chunk_from_dora(payload, metadata)
 
-    assert payload == chunk.payload
+    assert bytes(payload.to_pylist()) == chunk.payload
     assert decoded == chunk
     assert metadata.to_dora_metadata() == {
         "source_id": "offline_file",
@@ -443,6 +444,27 @@ def test_dora_audio_encode_decode_roundtrip() -> None:
         "channel_layout": "interleaved",
         "final": False,
     }
+
+
+def test_dora_audio_decode_ignores_transport_timestamp_metadata() -> None:
+    chunk = _chunk(seq=3, sample_index=6)
+    payload, metadata = encode_audio_chunk_for_dora(chunk)
+    runtime_metadata = metadata.to_dora_metadata()
+    runtime_metadata["timestamp"] = 1_718_000_000_000_000_000
+
+    decoded = decode_audio_chunk_from_dora(payload, runtime_metadata)
+
+    assert decoded == chunk
+
+
+def test_dora_audio_decode_accepts_uint8_arrow_payload() -> None:
+    chunk = _chunk(seq=3, sample_index=6)
+    _payload, metadata = encode_audio_chunk_for_dora(chunk)
+    arrow_payload = pa.array(chunk.payload, type=pa.uint8())
+
+    decoded = decode_audio_chunk_from_dora(arrow_payload, metadata)
+
+    assert decoded == chunk
 
 
 def test_dora_audio_decode_rejects_missing_metadata() -> None:
@@ -469,7 +491,29 @@ def test_dora_audio_decode_rejects_invalid_metadata() -> None:
         )
 
 
-def test_raw_pcm_source_dora_send_uses_bytes_payload_and_flat_metadata(tmp_path: Path) -> None:
+def test_dora_audio_decode_rejects_missing_audio_key_with_transport_metadata() -> None:
+    with pytest.raises(DoraAudioMetadataError, match="missing required keys: seq"):
+        decode_audio_chunk_from_dora(
+            b"\x00\x00",
+            {
+                "timestamp": 1_718_000_000_000_000_000,
+                "source_id": "offline_file",
+                "stream_id": "audio/offline",
+                "sample_index": 0,
+                "capture_time_ns": 0,
+                "frame_count": 1,
+                "sample_rate_hz": 16_000,
+                "channels": 1,
+                "sample_format": "s16le",
+                "channel_layout": "interleaved",
+                "final": False,
+            },
+        )
+
+
+def test_raw_pcm_source_dora_send_uses_uint8_arrow_payload_and_flat_metadata(
+    tmp_path: Path,
+) -> None:
     source_path = tmp_path / "input.s16le"
     source_path.write_bytes(b"abcdefgh")
     fake_node = FakeDoraSourceNode()
@@ -487,14 +531,18 @@ def test_raw_pcm_source_dora_send_uses_bytes_payload_and_flat_metadata(tmp_path:
     assert chunks_sent == 2
     assert len(fake_node.sent) == 3
     assert [sent[0] for sent in fake_node.sent] == ["audio", "audio", "audio"]
-    assert [sent[1] for sent in fake_node.sent] == [b"abcd", b"efgh", b""]
+    assert [bytes(sent[1].to_pylist()) for sent in fake_node.sent] == [
+        b"abcd",
+        b"efgh",
+        b"",
+    ]
     assert [sent[2]["seq"] for sent in fake_node.sent] == [0, 1, 2]
     assert [sent[2]["final"] for sent in fake_node.sent] == [False, False, True]
     assert fake_node.sent[-1][2]["sample_index"] == 4
     assert fake_node.sent[-1][2]["capture_time_ns"] == 4_050_000
 
     for _, payload, metadata in fake_node.sent:
-        assert isinstance(payload, bytes)
+        assert isinstance(payload, pa.UInt8Array)
         for value in metadata.values():
             assert isinstance(value, bool | int | float | str | list)
             assert not isinstance(value, dict)
@@ -510,6 +558,25 @@ def test_raw_pcm_sink_dora_receive_writes_byte_identical_output(tmp_path: Path) 
             _dora_input_event(first),
             _dora_input_event(second),
             _dora_final_event(seq=2, sample_index=4, capture_time_ns=250_000),
+        ],
+        _write_config(output_path),
+    )
+
+    assert output_path.read_bytes() == b"abcdefgh"
+    assert summary.chunks_written == 2
+    assert summary.bytes_written == 8
+
+
+def test_raw_pcm_sink_dora_input_closed_finishes_stream(tmp_path: Path) -> None:
+    output_path = tmp_path / "output.s16le"
+    first = _chunk(seq=0, sample_index=0, payload=b"abcd")
+    second = _chunk(seq=1, sample_index=2, payload=b"efgh")
+
+    summary = write_raw_pcm_sink_dora(
+        [
+            _dora_input_event(first),
+            _dora_input_event(second),
+            {"type": "INPUT_CLOSED", "id": "audio"},
         ],
         _write_config(output_path),
     )
