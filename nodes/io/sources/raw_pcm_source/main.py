@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from fluent_audio.offline import (
     iter_raw_pcm_chunks,
     write_raw_pcm_chunk_jsonl,
 )
+
+DORA_FINAL_MARKER_DRAIN_SECONDS = 0.1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -106,7 +109,15 @@ def send_raw_pcm_source_dora(node, config: RawPcmReadConfig) -> int:
         audio_format=config.audio_format,
     )
     node.send_output("audio", final_payload, metadata=final_metadata.to_dora_metadata())
+    _drain_dora_final_marker_send()
     return chunks_sent
+
+
+def _drain_dora_final_marker_send() -> None:
+    # The DORA Python API exposes no output flush/ack. Keep the source alive briefly
+    # after sending the explicit final marker so process teardown cannot race daemon
+    # ingestion; downstream nodes still fail closed if that marker is not observed.
+    time.sleep(DORA_FINAL_MARKER_DRAIN_SECONDS)
 
 
 def _metadata_json_line(chunk: AudioChunk) -> str:

@@ -1,0 +1,26 @@
+nodes:
+  - id: raw_pcm_source
+    path: python
+    args: ../nodes/io/sources/raw_pcm_source/main.py --dora --input ../tests/fixtures/vad/harvard_16k_mono_32768f.s16le --sample-rate-hz 16000 --channels 1 --sample-format s16le --channel-layout interleaved --chunk-frames 512 --source-id vad_speech_fixture --stream-id audio/vad/speech --start-seq 0 --start-sample-index 0 --start-capture-time-ns 0
+    outputs:
+      - audio
+
+  - id: vad
+    path: python
+    args: ../nodes/perception/vad/main.py --dora --input-source-id vad_speech_fixture --input-stream-id audio/vad/speech --output-source-id silero_vad --output-stream-id activity/vad/speech --threshold 0.5
+    inputs:
+      audio:
+        source: raw_pcm_source/audio
+        queue_size: 128
+        queue_policy: backpressure
+    outputs:
+      - activity
+
+  - id: activity_probe
+    path: python
+    args: ../nodes/perception/vad/activity_probe.py --dora --source-id silero_vad --stream-id activity/vad/speech --expected-total-events 64 --expected-min-speech-events 1 --expected-final-sample-index 32768
+    inputs:
+      activity:
+        source: vad/activity
+        queue_size: 128
+        queue_policy: backpressure

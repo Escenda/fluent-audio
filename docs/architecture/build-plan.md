@@ -8,7 +8,7 @@ This document tracks bottom-up construction status for `fluent-audio`.
 - Yellow = scaffold / partial. Directory and README only, or implementation exists but is not verified.
 - Red = not implemented.
 
-Current state: repository scaffold, agreed directory structure, contracts, raw PCM source/sink DORA boundaries, the offline DORA roundtrip dataflow, CPAL capture/sink hardware smokes, and the GStreamer-backed `media_graph` are green. Perception and later runtime nodes remain yellow.
+Current state: repository scaffold, agreed directory structure, contracts, raw PCM source/sink DORA boundaries, the offline DORA roundtrip dataflow, CPAL capture/sink hardware smokes, the GStreamer-backed `media_graph`, and the Silero VAD DORA node are green. Turn detection and later runtime nodes remain yellow.
 
 ## Progress Graph
 
@@ -23,7 +23,7 @@ flowchart TD
     cpal_capture["cpal_capture<br>Green"]
     cpal_sink["cpal_sink<br>Green"]
     media_graph["media_graph<br>Green"]
-    vad["vad<br>Yellow"]
+    vad["vad<br>Green"]
     turn_detector["turn_detector<br>Yellow"]
     nemotron_streaming["nemotron_streaming<br>Yellow"]
     dialogue_engine["dialogue_engine<br>Yellow"]
@@ -56,8 +56,8 @@ flowchart TD
     classDef verified fill:#d9f7d9,stroke:#1b7f1b,color:#0f3d0f;
     classDef scaffold fill:#fff3bf,stroke:#b58900,color:#4a3600;
     classDef missing fill:#ffd6d6,stroke:#b00020,color:#4a0000;
-    class repo_scaffold,directory_structure,contracts,raw_pcm_source,raw_pcm_sink,offline_roundtrip_dataflow,cpal_capture,cpal_sink,media_graph verified;
-    class vad,turn_detector,nemotron_streaming,dialogue_engine,codex_app_server,tts_backend,playback_queue,ros2_bridge,web_session_projection scaffold;
+    class repo_scaffold,directory_structure,contracts,raw_pcm_source,raw_pcm_sink,offline_roundtrip_dataflow,cpal_capture,cpal_sink,media_graph,vad verified;
+    class turn_detector,nemotron_streaming,dialogue_engine,codex_app_server,tts_backend,playback_queue,ros2_bridge,web_session_projection scaffold;
 ```
 
 ## Progress Table
@@ -73,7 +73,7 @@ flowchart TD
 | `cpal_capture` | `nodes/io/sources/cpal_capture` | Green: Rust CPAL input node opens explicit `alsa:hw:CARD=APE,DEV=0`, emits 25 typed DORA `audio` chunks, and sends an explicit final marker verified by `audio_probe`. | Opens an explicit CPAL input device, reports selected config, and emits correctly sized `AudioChunk` frames without implicit fallback. | `/home/aspa/.cargo/bin/cargo test --manifest-path nodes/io/shared/rust_audio_boundary/Cargo.toml`; `/home/aspa/.cargo/bin/cargo test --manifest-path nodes/io/sources/cpal_capture/Cargo.toml`; `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io`; `uv run --extra dev --extra dora python -m ruff check .`; `uvx --from dora-rs-cli dora build dataflows/cpal_capture_smoke.yml --uv --local`; `uvx --from dora-rs-cli dora run dataflows/cpal_capture_smoke.yml --uv` -> `{"chunks":25,"frames":12000,"bytes":48000,"final_seen":true}` |
 | `cpal_sink` | `nodes/io/sinks/cpal_sink` | Green: Rust CPAL output node opens explicit `alsa:hw:CARD=APE,DEV=0`, consumes silence from the DORA audio boundary, drains playback, and exits successfully. | Opens an explicit CPAL output device, consumes queue-owned audio, rejects format mismatch, and reports completion. | `/home/aspa/.cargo/bin/cargo test --manifest-path nodes/io/shared/rust_audio_boundary/Cargo.toml`; `/home/aspa/.cargo/bin/cargo test --manifest-path nodes/io/sinks/cpal_sink/Cargo.toml`; `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io`; `uv run --extra dev --extra dora python -m ruff check .`; `uvx --from dora-rs-cli dora build dataflows/cpal_sink_smoke.yml --uv --local`; `uvx --from dora-rs-cli dora run dataflows/cpal_sink_smoke.yml --uv` |
 | `media_graph` | `nodes/media_graph` | Green: DORA node owns an internal GStreamer `appsrc`/`appsink` graph, validates explicit input stream/format, emits typed main `audio` and optional `tap_audio`, preserves passthrough bytes, resamples 48k stereo to 16k stereo matching GStreamer reference output, sets appsrc/capsfilter caps explicitly, uses bounded tee queues, drains appsinks after GStreamer EOS before DORA final markers, and fails closed when no explicit final marker is processed. | Owns the GStreamer graph internally, supports explicit passthrough/resample/branch setup, and tears down cleanly. | `uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io tests/nodes/media_graph`; `uv run --extra dev --extra dora python -m ruff check .`; `uvx --from dora-rs-cli dora run dataflows/media_graph_passthrough.yml --uv`; `cmp tests/fixtures/offline/input.s16le artifacts/media_graph/passthrough_main.s16le`; `cmp tests/fixtures/offline/input.s16le artifacts/media_graph/passthrough_tap.s16le`; `uvx --from dora-rs-cli dora run dataflows/media_graph_resample.yml --uv`; `gst-launch-1.0 -q filesrc location=tests/fixtures/cpal/silence_48k_stereo_250ms.s16le ! audio/x-raw,format=S16LE,rate=48000,channels=2,layout=interleaved ! audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate=16000,channels=2,layout=interleaved ! filesink location=/tmp/fluent_audio_gst_resampled_16k.s16le`; `cmp /tmp/fluent_audio_gst_resampled_16k.s16le artifacts/media_graph/resampled_16k.s16le` |
-| `vad` | `nodes/perception/vad` | Yellow: node scaffold only. | Consumes typed audio chunks and emits typed speech activity events on fixture audio. | `uv run pytest tests/nodes/perception/test_vad.py` |
+| `vad` | `nodes/perception/vad` | Green: DORA node consumes explicit 16 kHz mono `s16le` audio chunks, runs the pinned Silero ONNX model, emits typed voice activity events, flushes the final padded evaluation window, and closes on an explicit DORA audio final marker or DORA `INPUT_CLOSED` when previous chunks make the final sample index exact. | Consumes typed audio chunks, rejects stream/format/sequence violations and missing completion, emits typed speech activity events on fixture audio, and passes representative DORA smoke. | `uv run --extra dev --extra dora --extra vad python -m pytest tests/contracts tests/nodes/perception`; `uv run --extra dev --extra dora --extra vad python -m ruff check .`; `uvx --from dora-rs-cli dora run dataflows/vad_speech_smoke.yml --uv`; `grep -R "dict\[str, Any\]\|from typing import Any\|: object\|list\[object\]\|dict\[str, object\]" -n src nodes tests` |
 | `turn_detector` | `nodes/perception/turn_detector` | Yellow: node scaffold only. | Consumes audio/activity context and emits typed turn boundary candidates with deterministic transition fixtures. | `uv run pytest tests/nodes/perception/test_turn_detector.py` |
 | `nemotron_streaming` | `nodes/perception/nemotron_streaming` | Yellow: node scaffold only. | Streams audio to Nemotron 3.5 ASR Streaming 0.6B and emits typed transcript delta/final events. | `uv run pytest tests/nodes/perception/test_nemotron_streaming.py -m integration` |
 | `dialogue_engine` | `nodes/interaction/dialogue_engine` | Yellow: node scaffold only. | Coordinates turn, transcript, interruption, agent event, TTS request, and playback state through typed events. | `uv run pytest tests/nodes/interaction/test_dialogue_engine.py` |
