@@ -1,0 +1,36 @@
+nodes:
+  - id: raw_pcm_source
+    path: python
+    args: ../nodes/io/sources/raw_pcm_source/main.py --dora --input ../tests/fixtures/offline/input.s16le --sample-rate-hz 16000 --channels 1 --sample-format s16le --channel-layout interleaved --chunk-frames 2 --source-id offline_file --stream-id audio/offline/mono16k --start-seq 0 --start-sample-index 0 --start-capture-time-ns 0
+    outputs:
+      - audio
+
+  - id: media_graph
+    path: python
+    args: ../nodes/media_graph/main.py --dora --input-source-id offline_file --input-stream-id audio/offline/mono16k --input-sample-rate-hz 16000 --input-channels 1 --input-sample-format s16le --input-channel-layout interleaved --output-source-id media_graph --output-stream-id audio/media_graph/passthrough --output-sample-rate-hz 16000 --output-channels 1 --output-sample-format s16le --output-channel-layout interleaved --output-start-seq 0 --output-start-sample-index 0 --output-start-capture-time-ns 0 --enable-tap --tap-source-id media_graph_tap --tap-stream-id audio/media_graph/tap --tap-start-seq 0 --tap-start-sample-index 0 --tap-start-capture-time-ns 0
+    inputs:
+      audio:
+        source: raw_pcm_source/audio
+        queue_size: 8
+        queue_policy: backpressure
+    outputs:
+      - audio
+      - tap_audio
+
+  - id: raw_pcm_sink_main
+    path: python
+    args: ../nodes/io/sinks/raw_pcm_sink/main.py --dora --output ../artifacts/media_graph/passthrough_main.s16le --sample-rate-hz 16000 --channels 1 --sample-format s16le --channel-layout interleaved --source-id media_graph --stream-id audio/media_graph/passthrough --overwrite
+    inputs:
+      audio:
+        source: media_graph/audio
+        queue_size: 8
+        queue_policy: backpressure
+
+  - id: raw_pcm_sink_tap
+    path: python
+    args: ../nodes/io/sinks/raw_pcm_sink/main.py --dora --output ../artifacts/media_graph/passthrough_tap.s16le --sample-rate-hz 16000 --channels 1 --sample-format s16le --channel-layout interleaved --source-id media_graph_tap --stream-id audio/media_graph/tap --overwrite
+    inputs:
+      audio:
+        source: media_graph/tap_audio
+        queue_size: 8
+        queue_policy: backpressure

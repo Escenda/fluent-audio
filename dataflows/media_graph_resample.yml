@@ -1,0 +1,26 @@
+nodes:
+  - id: silence_source
+    path: python
+    args: ../nodes/io/sources/raw_pcm_source/main.py --dora --input ../tests/fixtures/cpal/silence_48k_stereo_250ms.s16le --sample-rate-hz 48000 --channels 2 --sample-format s16le --channel-layout interleaved --chunk-frames 480 --source-id media_graph_resample_source --stream-id audio/media_graph/resample/source --start-seq 0 --start-sample-index 0 --start-capture-time-ns 0
+    outputs:
+      - audio
+
+  - id: media_graph
+    path: python
+    args: ../nodes/media_graph/main.py --dora --input-source-id media_graph_resample_source --input-stream-id audio/media_graph/resample/source --input-sample-rate-hz 48000 --input-channels 2 --input-sample-format s16le --input-channel-layout interleaved --output-source-id media_graph --output-stream-id audio/media_graph/resampled_16k --output-sample-rate-hz 16000 --output-channels 2 --output-sample-format s16le --output-channel-layout interleaved --output-start-seq 0 --output-start-sample-index 0 --output-start-capture-time-ns 0
+    inputs:
+      audio:
+        source: silence_source/audio
+        queue_size: 64
+        queue_policy: backpressure
+    outputs:
+      - audio
+
+  - id: raw_pcm_sink
+    path: python
+    args: ../nodes/io/sinks/raw_pcm_sink/main.py --dora --output ../artifacts/media_graph/resampled_16k.s16le --sample-rate-hz 16000 --channels 2 --sample-format s16le --channel-layout interleaved --source-id media_graph --stream-id audio/media_graph/resampled_16k --overwrite
+    inputs:
+      audio:
+        source: media_graph/audio
+        queue_size: 64
+        queue_policy: backpressure
