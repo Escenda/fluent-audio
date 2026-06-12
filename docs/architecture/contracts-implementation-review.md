@@ -96,7 +96,7 @@ Please correct it against docs/architecture/contracts-implementation-task.md:
 8. Keep build-plan contracts Yellow until the full required test set passes.
 
 Do not implement raw_pcm_source/sink yet.
-Do not change nodes/ or dataflows/.
+Do not change nodes/ or graphs/.
 Do not introduce Any, dict[str, Any], or object.
 ```
 

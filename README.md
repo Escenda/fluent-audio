@@ -22,32 +22,39 @@ contracts
 
 ## Directory Shape
 
-Shared Python contracts and helpers live under `src/fluent_audio`.
+Proto contracts live under `contracts/proto` and generated Python bindings live
+under `contracts/python`.
 
-Executable DORA nodes live under `nodes`. A node is a process boundary, so mixed-language nodes are not forced into the Python package.
+Executable DORA nodes live under `nodes`. A node is a process boundary, so
+mixed-language nodes are not forced into the Python package.
 
-Rust-heavy node implementation lives inside the owning node directory. There is no top-level `crates/` directory in this runtime scaffold.
+Rust-heavy node implementation lives inside the owning node directory. There is
+no top-level `crates/` directory in this runtime scaffold.
 
 ```text
 fluent-audio/
-├── src/fluent_audio/
-│   ├── contracts/
-│   ├── dora/
-│   └── offline/
+├── contracts/
+│   ├── proto/
+│   ├── python/
+│   ├── rust/
+│   └── typescript/
 ├── nodes/
-│   ├── io/
-│   │   ├── sources/
-│   │   └── sinks/
+│   ├── audio_device/
 │   ├── media_graph/
-│   ├── perception/
-│   ├── synthesis/
-│   ├── interaction/
-│   ├── agent/
-│   └── bridges/
-├── dataflows/
+│   ├── vad/
+│   ├── asr/
+│   ├── dialogue_engine/
+│   ├── tts/
+│   ├── playback/
+│   └── diagnostics/
+├── bridges/
+├── apps/
+├── graphs/
+├── environments/
+├── tools/
 ├── docs/
 └── tests/
 ```
 
-See [docs/architecture/directory-structure.md](docs/architecture/directory-structure.md).
+See [docs/設計/repository-structure.md](docs/設計/repository-structure.md).
 Build progress is tracked in [docs/architecture/build-plan.md](docs/architecture/build-plan.md).

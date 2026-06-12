@@ -1,100 +1,136 @@
 # Directory Structure
 
-This repo separates three things that should not be mixed:
+This repo separates the things that should not be mixed:
 
-- shared contracts and library code
+- generated contracts and runtime helper code
 - executable DORA nodes
-- dataflow declarations
+- bridge boundaries
+- graph declarations
 - runtime verification material
 
 ## Top Level
 
 ```text
 fluent-audio/
-├── src/fluent_audio/
+├── contracts/
 ├── nodes/
-├── dataflows/
+├── bridges/
+├── apps/
+├── graphs/
+├── environments/
+├── tools/
+├── src/fluent_audio/
 ├── docs/
 └── tests/
 ```
 
-## Shared Package
+## Contracts
 
 ```text
-src/fluent_audio/
-├── contracts/
-├── dora/
-└── offline/
+contracts/
+├── proto/
+│   └── fluent_audio/
+│       └── v1/
+├── python/
+├── rust/
+└── typescript/
 ```
 
-`src/fluent_audio` is not where every runtime node lives. It holds reusable contracts and helpers.
-Contracts, DORA payload helpers, and offline helpers are added here only when they have explicit typed boundaries.
+`contracts/proto` is the schema source of truth. Generated language packages
+live under `contracts/<language>`.
+
+`src/fluent_audio` holds runtime helpers that are not generated contract code:
+DORA payload helpers, offline IO helpers, and shared typed utilities.
 
 ## Executable Nodes
 
 ```text
 nodes/
-├── io/
-│   ├── sources/
-│   │   ├── raw_pcm_source/
-│   │   └── cpal_capture/
-│   └── sinks/
-│       ├── raw_pcm_sink/
-│       └── cpal_sink/
+├── audio_device/
+│   ├── raw_pcm_source/
+│   ├── wav_pcm_source/
+│   ├── raw_pcm_sink/
+│   ├── audio_probe/
+│   ├── cpal_capture/
+│   ├── cpal_sink/
+│   └── rust_audio_boundary/
 ├── media_graph/
-├── perception/
-│   ├── vad/
+├── vad/
+│   ├── silero/
 │   ├── turn_detector/
-│   └── nemotron_streaming/
-├── synthesis/
-│   └── tts_backend/
-├── interaction/
-│   ├── dialogue_engine/
-│   └── playback_queue/
-├── agent/
+├── asr/
+│   ├── asr_control_from_turn/
+│   ├── nemotron_streaming/
+│   └── transcript_replay/
+├── dialogue_engine/
+│   ├── main.py
+│   ├── agent_output_probe.py
 │   └── codex_app_server/
-└── bridges/
-    ├── ros2_bridge/
-    └── web_session_projection/
+├── tts/
+│   ├── tts_backend/
+│   ├── tts_pyopenjtalk_server/
+│   ├── synth_audio_replay/
+│   └── synth_audio_probe.py
+├── playback/
+│   ├── playback_queue/
+│   └── speaker_stream_adapter/
+└── diagnostics/
 ```
 
-Each leaf node directory owns one process boundary. A node directory may be Python, Rust, or mixed-language implementation, but the implementation belongs to that node directory.
+Each leaf node directory owns one process boundary. A node directory may be
+Python, Rust, or mixed-language implementation, but implementation belongs to
+that node directory.
 
-The `io` boundary is split into sources and sinks because production and consumption have different failure and validation surfaces.
+`audio_device` owns audio ingress/egress, including file-backed replay nodes and
+CPAL hardware nodes.
 
 `media_graph` remains a single DORA node. GStreamer or other in-process media graph taxonomy stays internal to that node and does not leak into repo directory names.
 
-`perception` reads state or meaning from audio: VAD, turn detection, and ASR.
+`vad` owns speech activity and turn-boundary detection.
 
-`synthesis` creates audio from text or other synthesis-ready inputs.
+`asr` owns ASR control, streaming ASR, and transcript replay/probing.
 
-`interaction` owns conversation progression and playback control.
+`dialogue_engine` owns voice-surface orchestration and the Codex app-server
+boundary used by that surface.
 
-`agent` owns agent runtime connectivity. The app-server connector node is named `codex_app_server`.
+`tts` owns text-to-speech boundaries and synthesis probes.
 
-`bridges` owns ROS2 and Web projection boundaries. Bridges validate external payloads before passing them inward.
+`playback` owns playback scheduling and speaker-stream adaptation.
 
-Expected leaf node directory shape:
+## Bridges
 
 ```text
-nodes/<category>/.../<node_name>/
-├── README.md
-├── main.py            # Python node, when applicable
-├── config.py          # typed config, when applicable
-└── node.toml          # node metadata, when useful
+bridges/
+├── ros2_bridge/
+│   ├── fluent_audio_interfaces/
+│   ├── main.py
+│   ├── ingress.py
+│   ├── messages.py
+│   └── sidecar.py
+└── dora_web_bridge/
+    ├── dashboard.html
+    ├── decoder.py
+    ├── main.py
+    ├── messages.py
+    └── projection.py
 ```
+
+Bridges validate external payloads before passing them inward. ROS2 and Web are
+outside the primary audio and agent execution path.
 
 Rust-heavy nodes keep their Rust code under the owning node directory. Do not restore a top-level `crates/` directory without explicit human approval.
 
-## Dataflows
+## Graphs
 
 ```text
-dataflows/
-├── offline_roundtrip_dataflow.yml
-├── device_loopback_dataflow.yml
-└── voice_turn_slice_dataflow.yml
+graphs/
+├── offline_roundtrip.yml
+├── media_graph_passthrough.yml
+├── vad_speech_smoke.yml
+└── out/
 ```
 
-Dataflows wire nodes together. They should not define hidden behavior. Format, sample rate, channel count, and queue policy must be explicit.
+Graphs wire nodes together. They should not define hidden behavior. Format,
+sample rate, channel count, and queue policy must be explicit.
 
-Dataflow declarations are added only when the referenced node scaffold exists and the verification command is known.
+Generated local graph variants live under `graphs/out`.

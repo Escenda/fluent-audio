@@ -1,0 +1,26 @@
+nodes:
+  - id: tts_text_replay
+    path: python
+    args: ../tests/fixtures/dora/tts_text_replay.py --dora --request-id tts-smoke-1 --session-id session-tts-smoke-1 --user-turn-id user-turn-tts-smoke-1 --assistant-turn-id assistant-turn-tts-smoke-1 --text こんにちは。音声合成のスモークテストです。
+    outputs:
+      - tts_text
+
+  - id: tts_backend
+    path: python
+    args: ../nodes/tts/tts_backend/main.py --dora --endpoint-url http://127.0.0.1:18084/synthesize --timeout-seconds 30 --output-drain-seconds 2.0
+    inputs:
+      tts_text:
+        source: tts_text_replay/tts_text
+        queue_size: 16
+        queue_policy: backpressure
+    outputs:
+      - synth_audio
+
+  - id: synth_audio_probe
+    path: python
+    args: ../nodes/tts/synth_audio_probe.py --dora --request-id tts-smoke-1 --session-id session-tts-smoke-1 --user-turn-id user-turn-tts-smoke-1 --assistant-turn-id assistant-turn-tts-smoke-1 --audio-source-id tts_pyopenjtalk --audio-stream-id tts/pyopenjtalk --expected-min-chunks 1 --expected-min-frames 1 --expected-sample-format f32le --expected-channels 1
+    inputs:
+      synth_audio:
+        source: tts_backend/synth_audio
+        queue_size: 64
+        queue_policy: backpressure

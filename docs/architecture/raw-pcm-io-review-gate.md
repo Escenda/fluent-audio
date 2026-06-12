@@ -8,13 +8,13 @@ The implementation is not green until this gate passes. Passing only a subset of
 
 Allowed changed paths:
 
-- `nodes/io/sources/raw_pcm_source/`
-- `nodes/io/sinks/raw_pcm_sink/`
+- `nodes/audio_device/raw_pcm_source/`
+- `nodes/audio_device/raw_pcm_sink/`
 - `src/fluent_audio/offline/`
 - `src/fluent_audio/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
-- `dataflows/offline_roundtrip.yml`
-- `dataflows/README.md`
-- `tests/nodes/io/`
+- `graphs/offline_roundtrip.yml`
+- `graphs/README.md`
+- `tests/nodes/audio_device/`
 - `tests/fixtures/offline/`
 - `docs/architecture/build-plan.md`
 - `docs/architecture/raw-pcm-io-implementation-review.md`
@@ -121,11 +121,11 @@ Required tests:
 Always run:
 
 ```bash
-uv run --extra dev python -m pytest tests/nodes/io
+uv run --extra dev python -m pytest tests/nodes/audio_device
 uv run --extra dev python -m ruff check .
 uv run --extra dev python -c "import fluent_audio; print(fluent_audio.__file__)"
-grep -R "Any\\|dict\\[str\\|object\\|type: ignore" -n nodes/io src/fluent_audio/offline src/fluent_audio/dora tests/nodes/io || true
-grep -R '"sequence"\\|sequence=' -n nodes/io src/fluent_audio/offline src/fluent_audio/dora tests/nodes/io || true
+grep -R "Any\\|dict\\[str\\|object\\|type: ignore" -n nodes/audio_device src/fluent_audio/offline src/fluent_audio/dora tests/nodes/audio_device || true
+grep -R '"sequence"\\|sequence=' -n nodes/audio_device src/fluent_audio/offline src/fluent_audio/dora tests/nodes/audio_device || true
 ```
 
 `raw_pcm_source` and `raw_pcm_sink` may become Green only after these checks pass and the review checks above are satisfied.
@@ -133,8 +133,8 @@ grep -R '"sequence"\\|sequence=' -n nodes/io src/fluent_audio/offline src/fluent
 For the DORA boundary phase, also run:
 
 ```bash
-uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io
-uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/io tests/nodes/io
+uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/audio_device
+uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/audio_device tests/nodes/audio_device
 uv run --extra dora python -c "from dora import Node; print(Node)"
 uv run --extra dora dora --help
 ```
@@ -147,7 +147,7 @@ If the final command cannot spawn the `dora` CLI, report that explicitly and kee
 `offline_roundtrip_dataflow` stays Yellow unless this exact runtime path is verified:
 
 ```bash
-dora run dataflows/offline_roundtrip.yml --uv
+dora run graphs/offline_roundtrip.yml --uv
 cmp tests/fixtures/offline/input.s16le artifacts/offline/output.s16le
 ```
 

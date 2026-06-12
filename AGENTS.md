@@ -7,7 +7,9 @@ Core rules:
 - Do not hide audio, timing, sequence, device, or model failures with implicit fallback.
 - Do not keep legacy compatibility paths unless a human explicitly approves the exception.
 - Keep DORA process boundaries separate from in-process media graphs.
-- Keep `src/fluent_audio` for shared contracts and libraries.
+- Keep `contracts/proto` as the schema source of truth for generated contracts.
+- Keep `contracts/python` for generated Python protobuf bindings.
+- Keep `src/fluent_audio` for runtime helpers that are not generated contract code.
 - Keep executable DORA nodes under top-level `nodes/`.
 - Keep Rust-heavy node implementation inside the owning node directory under `nodes/`.
 - Do not reintroduce top-level `crates/` unless a human explicitly approves the exception.

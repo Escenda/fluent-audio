@@ -1,0 +1,204 @@
+syntax = "proto3";
+
+package fluent_audio.v1;
+
+import "google/protobuf/struct.proto";
+
+enum DialogueInputKind {
+  DIALOGUE_INPUT_KIND_UNSPECIFIED = 0;
+  DIALOGUE_INPUT_KIND_TRANSCRIPT_FINAL = 1;
+  DIALOGUE_INPUT_KIND_CANCEL = 2;
+  DIALOGUE_INPUT_KIND_PLAYBACK_DONE = 3;
+}
+
+enum DialogueEventKind {
+  DIALOGUE_EVENT_KIND_UNSPECIFIED = 0;
+  DIALOGUE_EVENT_KIND_AGENT_TEXT = 1;
+  DIALOGUE_EVENT_KIND_TTS_TEXT = 2;
+  DIALOGUE_EVENT_KIND_APPROVAL_REQUESTED = 3;
+  DIALOGUE_EVENT_KIND_USER_INPUT_REQUESTED = 4;
+  DIALOGUE_EVENT_KIND_MCP_ELICITATION_REQUESTED = 5;
+  DIALOGUE_EVENT_KIND_TOOL_EVENT = 6;
+  DIALOGUE_EVENT_KIND_CANCELLED = 7;
+  DIALOGUE_EVENT_KIND_ERROR = 8;
+}
+
+enum AgentApprovalDecision {
+  AGENT_APPROVAL_DECISION_UNSPECIFIED = 0;
+  AGENT_APPROVAL_DECISION_ACCEPT = 1;
+  AGENT_APPROVAL_DECISION_DECLINE = 2;
+  AGENT_APPROVAL_DECISION_CANCEL = 3;
+}
+
+enum AgentApprovalScope {
+  AGENT_APPROVAL_SCOPE_UNSPECIFIED = 0;
+  AGENT_APPROVAL_SCOPE_TURN = 1;
+  AGENT_APPROVAL_SCOPE_SESSION = 2;
+}
+
+enum AgentToolEventKind {
+  AGENT_TOOL_EVENT_KIND_UNSPECIFIED = 0;
+  AGENT_TOOL_EVENT_KIND_STARTED = 1;
+  AGENT_TOOL_EVENT_KIND_COMPLETED = 2;
+  AGENT_TOOL_EVENT_KIND_FAILED = 3;
+}
+
+enum AgentTurnDoneStatus {
+  AGENT_TURN_DONE_STATUS_UNSPECIFIED = 0;
+  AGENT_TURN_DONE_STATUS_COMPLETED = 1;
+  AGENT_TURN_DONE_STATUS_CANCELLED = 2;
+  AGENT_TURN_DONE_STATUS_FAILED = 3;
+}
+
+message DialogueInput {
+  DialogueInputKind input_type = 1;
+  string session_id = 2;
+  string user_turn_id = 3;
+  uint64 seq = 4;
+  optional string text = 5;
+  optional string request_id = 6;
+}
+
+message DialogueEvent {
+  DialogueEventKind event = 1;
+  string session_id = 2;
+  string user_turn_id = 3;
+  uint64 seq = 4;
+  optional string text = 5;
+  optional string request_id = 6;
+  optional string message = 7;
+}
+
+message AgentTurnRequest {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string assistant_turn_id = 3;
+  uint64 seq = 4;
+  string text = 5;
+}
+
+message AgentTextDelta {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string agent_turn_id = 3;
+  uint64 seq = 4;
+  string text = 5;
+}
+
+message AgentTurnDone {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string agent_turn_id = 3;
+  uint64 seq = 4;
+  AgentTurnDoneStatus status = 5;
+  optional string reason = 6;
+}
+
+message AgentApprovalRequest {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string approval_id = 3;
+  uint64 seq = 4;
+  string prompt = 5;
+  string action_label = 6;
+}
+
+message AgentApprovalResponse {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string approval_id = 3;
+  uint64 seq = 4;
+  AgentApprovalDecision decision = 5;
+  AgentApprovalScope scope = 6;
+  optional string reason = 7;
+}
+
+message AgentToolEvent {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string tool_call_id = 3;
+  uint64 seq = 4;
+  AgentToolEventKind event = 5;
+  string name = 6;
+  optional string summary = 7;
+  optional string error_message = 8;
+}
+
+message AgentCancelRequest {
+  string session_id = 1;
+  string user_turn_id = 2;
+  uint64 seq = 3;
+  optional string reason = 4;
+}
+
+message AgentUserInputOption {
+  string label = 1;
+  string description = 2;
+}
+
+message AgentUserInputQuestion {
+  string id = 1;
+  string header = 2;
+  string question = 3;
+  bool is_other = 4;
+  bool is_secret = 5;
+  repeated AgentUserInputOption options = 6;
+}
+
+message AgentUserInputRequest {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string request_id = 3;
+  uint64 seq = 4;
+  repeated AgentUserInputQuestion questions = 5;
+}
+
+message AgentUserInputAnswer {
+  string question_id = 1;
+  repeated string answers = 2;
+}
+
+message AgentUserInputResponse {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string request_id = 3;
+  uint64 seq = 4;
+  repeated AgentUserInputAnswer answers = 5;
+}
+
+enum AgentMcpElicitationMode {
+  AGENT_MCP_ELICITATION_MODE_UNSPECIFIED = 0;
+  AGENT_MCP_ELICITATION_MODE_FORM = 1;
+  AGENT_MCP_ELICITATION_MODE_URL = 2;
+}
+
+enum AgentMcpElicitationAction {
+  AGENT_MCP_ELICITATION_ACTION_UNSPECIFIED = 0;
+  AGENT_MCP_ELICITATION_ACTION_ACCEPT = 1;
+  AGENT_MCP_ELICITATION_ACTION_DECLINE = 2;
+  AGENT_MCP_ELICITATION_ACTION_CANCEL = 3;
+}
+
+message AgentMcpElicitationRequest {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string request_id = 3;
+  uint64 seq = 4;
+  string server_name = 5;
+  AgentMcpElicitationMode mode = 6;
+  string message = 7;
+  optional string url = 8;
+  optional string elicitation_id = 9;
+  optional google.protobuf.Value requested_schema = 10;
+  optional google.protobuf.Value meta = 11;
+}
+
+message AgentMcpElicitationResponse {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string request_id = 3;
+  uint64 seq = 4;
+  AgentMcpElicitationAction action = 5;
+  optional google.protobuf.Value content = 6;
+  optional google.protobuf.Value meta = 7;
+}

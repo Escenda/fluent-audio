@@ -6,10 +6,10 @@ Review target:
 
 - `src/fluent_audio/dora/audio.py`
 - `src/fluent_audio/offline/raw_pcm.py`
-- `nodes/io/sources/raw_pcm_source/main.py`
-- `nodes/io/sinks/raw_pcm_sink/main.py`
-- `dataflows/offline_roundtrip.yml`
-- `tests/nodes/io/test_raw_pcm.py`
+- `nodes/audio_device/raw_pcm_source/main.py`
+- `nodes/audio_device/raw_pcm_sink/main.py`
+- `graphs/offline_roundtrip.yml`
+- `tests/nodes/audio_device/test_raw_pcm.py`
 
 ## Verdict
 
@@ -24,13 +24,13 @@ and byte comparison were not run.
 ## Verified Commands
 
 ```bash
-uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io
+uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/audio_device
 ```
 
 Result: 64 passed.
 
 ```bash
-uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/io tests/nodes/io
+uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/audio_device tests/nodes/audio_device
 ```
 
 Result: passed.
@@ -49,8 +49,8 @@ command -v dora
 Result: `dora` CLI unavailable.
 
 ```bash
-grep -R -n -E 'Any|dict\[str|object|type: ignore' nodes/io src/fluent_audio/offline src/fluent_audio/dora tests/nodes/io
-grep -R -n -E '"sequence"|sequence=' nodes/io src/fluent_audio/offline src/fluent_audio/dora tests/nodes/io
+grep -R -n -E 'Any|dict\[str|object|type: ignore' nodes/audio_device src/fluent_audio/offline src/fluent_audio/dora tests/nodes/audio_device
+grep -R -n -E '"sequence"|sequence=' nodes/audio_device src/fluent_audio/offline src/fluent_audio/dora tests/nodes/audio_device
 ```
 
 Result: no matches.
@@ -75,7 +75,7 @@ runtime transport.
 `offline_roundtrip_dataflow` can become Green only after this live path passes:
 
 ```bash
-dora run dataflows/offline_roundtrip.yml --uv
+dora run graphs/offline_roundtrip.yml --uv
 cmp tests/fixtures/offline/input.s16le artifacts/offline/output.s16le
 ```
 

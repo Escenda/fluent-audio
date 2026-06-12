@@ -1,0 +1,15 @@
+[package]
+name = "fluent-audio-io-boundary"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "fluent_audio_io_boundary"
+path = "src/lib.rs"
+
+[dependencies]
+dora-node-api = "0.5.0"
+fluent-audio-contracts = { path = "../../../contracts/rust" }
+prost = "0.14"
+thiserror = "2.0"

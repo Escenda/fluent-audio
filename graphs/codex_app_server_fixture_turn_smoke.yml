@@ -1,0 +1,42 @@
+nodes:
+  - id: agent_turn_replay
+    path: python
+    args: ../tests/fixtures/dora/agent_turn_replay.py --dora --session-id fixture-turn-smoke --user-turn-id user-turn-fixture-smoke --assistant-turn-id assistant-turn-fixture-smoke --text Hello
+    outputs:
+      - agent_turn
+
+  - id: codex_app_server
+    path: python
+    args: ../nodes/dialogue_engine/codex_app_server/main.py --dora --timeout-seconds 15 --approval-response-timeout-seconds 15 --sandbox read-only --approval-policy never --app-server-command-file ../tests/fixtures/jsonrpc/codex_app_server_fixture_turn.command
+    inputs:
+      agent_turn:
+        source: agent_turn_replay/agent_turn
+        queue_size: 16
+        queue_policy: backpressure
+    outputs:
+      - agent_event
+      - agent_text
+      - agent_done
+      - agent_approval
+      - agent_tool
+
+  - id: agent_output_probe
+    path: python
+    args: ../nodes/dialogue_engine/agent_output_probe.py --dora --session-id fixture-turn-smoke --user-turn-id user-turn-fixture-smoke --agent-turn-id assistant-turn-fixture-smoke --expected-min-text-deltas 1 --expected-approval-requests 0 --expected-tool-events 0 --expected-done-status completed --expected-text-contains fluent-audio-fixture-smoke
+    inputs:
+      agent_text:
+        source: codex_app_server/agent_text
+        queue_size: 64
+        queue_policy: backpressure
+      agent_done:
+        source: codex_app_server/agent_done
+        queue_size: 16
+        queue_policy: backpressure
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+      agent_tool:
+        source: codex_app_server/agent_tool
+        queue_size: 16
+        queue_policy: backpressure

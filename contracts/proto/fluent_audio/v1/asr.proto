@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package fluent_audio.v1;
+
+message AsrStart {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+  uint64 start_sample_index = 5;
+}
+
+message AsrStop {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+  uint64 stop_sample_index = 5;
+}
+
+message AsrCancel {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+  string reason = 5;
+}
+
+message AsrControl {
+  oneof control {
+    AsrStart start = 1;
+    AsrStop stop = 2;
+    AsrCancel cancel = 3;
+  }
+}
+
+message AsrControlStreamFinal {
+  string session_id = 1;
+  string stream_id = 2;
+  uint64 seq = 3;
+}
+
+message TranscriptDelta {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+  string text = 5;
+}
+
+message TranscriptPartial {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+  string text = 5;
+}
+
+message TranscriptFinal {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+  string text = 5;
+  uint64 start_sample_index = 6;
+  uint64 end_sample_index = 7;
+}
+
+message TranscriptEvent {
+  oneof event {
+    TranscriptDelta delta = 1;
+    TranscriptFinal final = 2;
+    TranscriptPartial partial = 3;
+  }
+}
+
+message TranscriptStreamFinal {
+  string session_id = 1;
+  string stream_id = 2;
+  uint64 seq = 3;
+  uint64 sample_index = 4;
+}

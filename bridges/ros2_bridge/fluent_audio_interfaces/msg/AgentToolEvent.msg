@@ -1,0 +1,9 @@
+std_msgs/Header header
+string session_id
+string user_turn_id
+string tool_call_id
+string tool_name
+string event
+uint64 seq
+string summary
+string error_message

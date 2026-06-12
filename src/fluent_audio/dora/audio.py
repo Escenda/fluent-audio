@@ -1,47 +1,45 @@
-"""Typed DORA metadata helpers for raw PCM audio payloads."""
+"""DORA protobuf helpers for raw PCM audio messages."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
-from typing import Self, TypeAlias
+from typing import TypeAlias
 
-import pyarrow as pa
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from fluent_audio.contracts import AudioChunk, AudioFormat, ChannelLayout, SampleFormat
-
-DoraMetadataPrimitive: TypeAlias = bool | int | float | str
-DoraMetadataValue: TypeAlias = DoraMetadataPrimitive | list[DoraMetadataPrimitive]
-DoraMetadataMapping: TypeAlias = Mapping[str, DoraMetadataValue]
-DoraMetadataMutableMapping: TypeAlias = MutableMapping[str, DoraMetadataValue]
-DoraAudioPayloadInput: TypeAlias = bytes | pa.UInt8Array
-DoraAudioEncodedPayload: TypeAlias = pa.UInt8Array
-
-DORA_AUDIO_METADATA_FIELDS: tuple[str, ...] = (
-    "source_id",
-    "stream_id",
-    "seq",
-    "sample_index",
-    "capture_time_ns",
-    "frame_count",
-    "sample_rate_hz",
-    "channels",
-    "sample_format",
-    "channel_layout",
-    "final",
+from fluent_audio.dora.protobuf import (
+    DoraMetadataMapping,
+    DoraProtobufEncodedPayload,
+    DoraProtobufMetadata,
+    DoraProtobufPayloadInput,
+    encode_proto_message_for_dora,
+    decode_proto_message_from_dora,
+    validate_dora_protobuf_metadata,
 )
+from fluent_audio_contracts.fluent_audio.v1.audio_pb2 import (
+    CHANNEL_LAYOUT_INTERLEAVED,
+    SAMPLE_FORMAT_F32LE,
+    SAMPLE_FORMAT_S16LE,
+    AudioFormat as PbAudioFormat,
+    AudioFrame,
+    AudioStreamFinal,
+)
+
+DoraAudioPayloadInput: TypeAlias = DoraProtobufPayloadInput
+DoraAudioEncodedPayload: TypeAlias = DoraProtobufEncodedPayload
+DoraAudioMetadata: TypeAlias = DoraProtobufMetadata
 
 
 class DoraAudioMetadataError(ValueError):
-    """Raised when DORA audio metadata cannot validate an audio payload."""
+    """Raised when DORA audio protobuf payloads cannot validate."""
 
 
 class DoraAudioFinalMarkerError(DoraAudioMetadataError):
     """Raised when a DORA final marker is decoded as an audio chunk."""
 
 
-class DoraAudioMetadata(BaseModel):
-    """Flat DORA metadata needed to reconstruct an ``AudioChunk``."""
+class DoraAudioFinalMarker(BaseModel):
+    """Validated audio stream completion decoded from protobuf transport."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -50,21 +48,10 @@ class DoraAudioMetadata(BaseModel):
     seq: int = Field(ge=0)
     sample_index: int = Field(ge=0)
     capture_time_ns: int = Field(ge=0)
-    frame_count: int = Field(ge=0)
     sample_rate_hz: int = Field(gt=0)
     channels: int = Field(gt=0)
     sample_format: SampleFormat
     channel_layout: ChannelLayout
-    final: bool
-
-    @model_validator(mode="after")
-    def validate_frame_count(self) -> Self:
-        if self.final:
-            if self.frame_count != 0:
-                raise ValueError("DORA final audio marker must have frame_count=0")
-        elif self.frame_count == 0:
-            raise ValueError("DORA audio chunk metadata must have frame_count > 0")
-        return self
 
     def to_audio_format(self) -> AudioFormat:
         return AudioFormat(
@@ -74,46 +61,21 @@ class DoraAudioMetadata(BaseModel):
             channel_layout=self.channel_layout,
         )
 
-    def to_dora_metadata(self) -> DoraMetadataMutableMapping:
-        return {
-            "source_id": self.source_id,
-            "stream_id": self.stream_id,
-            "seq": self.seq,
-            "sample_index": self.sample_index,
-            "capture_time_ns": self.capture_time_ns,
-            "frame_count": self.frame_count,
-            "sample_rate_hz": self.sample_rate_hz,
-            "channels": self.channels,
-            "sample_format": self.sample_format,
-            "channel_layout": self.channel_layout,
-            "final": self.final,
-        }
-
-
-DoraAudioMetadataInput: TypeAlias = DoraMetadataMapping | DoraAudioMetadata | None
-
 
 def encode_audio_chunk_for_dora(
     chunk: AudioChunk,
 ) -> tuple[DoraAudioEncodedPayload, DoraAudioMetadata]:
-    """Encode an ``AudioChunk`` as a DORA payload plus flat DORA metadata."""
-
-    return (
-        _encode_dora_audio_payload(chunk.payload),
-        DoraAudioMetadata(
-            source_id=chunk.source_id,
-            stream_id=chunk.stream_id,
-            seq=chunk.seq,
-            sample_index=chunk.sample_index,
-            capture_time_ns=chunk.capture_time_ns,
-            frame_count=chunk.frame_count,
-            sample_rate_hz=chunk.format.sample_rate_hz,
-            channels=chunk.format.channels,
-            sample_format=chunk.format.sample_format,
-            channel_layout=chunk.format.channel_layout,
-            final=False,
-        ),
+    frame = AudioFrame(
+        source_id=chunk.source_id,
+        stream_id=chunk.stream_id,
+        seq=chunk.seq,
+        sample_index=chunk.sample_index,
+        capture_time_ns=chunk.capture_time_ns,
+        frame_count=chunk.frame_count,
+        format=_audio_format_to_proto(chunk.format),
+        payload=chunk.payload,
     )
+    return encode_proto_message_for_dora(frame)
 
 
 def encode_audio_final_marker_for_dora(
@@ -125,106 +87,127 @@ def encode_audio_final_marker_for_dora(
     capture_time_ns: int,
     audio_format: AudioFormat,
 ) -> tuple[DoraAudioEncodedPayload, DoraAudioMetadata]:
-    """Encode explicit source completion for the DORA audio boundary."""
-
-    return (
-        _encode_dora_audio_payload(b""),
-        DoraAudioMetadata(
-            source_id=source_id,
-            stream_id=stream_id,
-            seq=seq,
-            sample_index=sample_index,
-            capture_time_ns=capture_time_ns,
-            frame_count=0,
-            sample_rate_hz=audio_format.sample_rate_hz,
-            channels=audio_format.channels,
-            sample_format=audio_format.sample_format,
-            channel_layout=audio_format.channel_layout,
-            final=True,
-        ),
+    final = AudioStreamFinal(
+        source_id=source_id,
+        stream_id=stream_id,
+        seq=seq,
+        sample_index=sample_index,
+        capture_time_ns=capture_time_ns,
+        format=_audio_format_to_proto(audio_format),
     )
+    return encode_proto_message_for_dora(final)
 
 
-def validate_dora_audio_metadata(metadata: DoraAudioMetadataInput) -> DoraAudioMetadata:
-    """Validate DORA audio metadata at the boundary."""
-
-    if metadata is None:
-        raise DoraAudioMetadataError("DORA audio metadata is required")
-    if isinstance(metadata, DoraAudioMetadata):
-        return metadata
-    if not isinstance(metadata, Mapping):
-        raise DoraAudioMetadataError("DORA audio metadata is invalid")
-
-    extracted_metadata = _extract_dora_audio_metadata(metadata)
+def validate_dora_audio_metadata(
+    metadata: DoraMetadataMapping | DoraAudioMetadata | None,
+) -> DoraAudioMetadata:
     try:
-        return DoraAudioMetadata.model_validate(extracted_metadata)
+        protobuf_metadata = validate_dora_protobuf_metadata(metadata)
     except ValueError as exc:
         raise DoraAudioMetadataError("DORA audio metadata is invalid") from exc
+    if protobuf_metadata.message_type not in (
+        AudioFrame.DESCRIPTOR.full_name,
+        AudioStreamFinal.DESCRIPTOR.full_name,
+    ):
+        raise DoraAudioMetadataError(
+            "DORA audio metadata message type is invalid: "
+            f"{protobuf_metadata.message_type!r}"
+        )
+    return protobuf_metadata
 
 
 def decode_audio_chunk_from_dora(
-    payload: DoraAudioPayloadInput, metadata: DoraAudioMetadataInput
+    payload: DoraAudioPayloadInput,
+    metadata: DoraMetadataMapping | DoraAudioMetadata | None,
 ) -> AudioChunk:
-    """Decode DORA bytes payload and metadata into a validated ``AudioChunk``."""
-
-    payload_bytes = _decode_dora_audio_payload(payload)
     audio_metadata = validate_dora_audio_metadata(metadata)
-    if audio_metadata.final:
+    if audio_metadata.message_type == AudioStreamFinal.DESCRIPTOR.full_name:
         raise DoraAudioFinalMarkerError("DORA final audio marker is not an AudioChunk")
     try:
+        frame = decode_proto_message_from_dora(payload, audio_metadata, AudioFrame)
         return AudioChunk(
-            source_id=audio_metadata.source_id,
-            stream_id=audio_metadata.stream_id,
-            seq=audio_metadata.seq,
-            sample_index=audio_metadata.sample_index,
-            capture_time_ns=audio_metadata.capture_time_ns,
-            frame_count=audio_metadata.frame_count,
-            format=audio_metadata.to_audio_format(),
-            payload=payload_bytes,
+            source_id=frame.source_id,
+            stream_id=frame.stream_id,
+            seq=frame.seq,
+            sample_index=frame.sample_index,
+            capture_time_ns=frame.capture_time_ns,
+            frame_count=frame.frame_count,
+            format=_audio_format_from_proto(frame.format),
+            payload=frame.payload,
         )
     except ValueError as exc:
         raise DoraAudioMetadataError(
-            "DORA audio payload and metadata did not validate as AudioChunk"
+            "DORA audio protobuf did not validate as AudioChunk"
         ) from exc
 
 
 def validate_dora_audio_final_marker(
-    payload: DoraAudioPayloadInput, metadata: DoraAudioMetadataInput
-) -> DoraAudioMetadata:
-    """Validate an explicit DORA audio final marker."""
-
-    payload_bytes = _decode_dora_audio_payload(payload)
+    payload: DoraAudioPayloadInput,
+    metadata: DoraMetadataMapping | DoraAudioMetadata | None,
+) -> DoraAudioFinalMarker:
     audio_metadata = validate_dora_audio_metadata(metadata)
-    if not audio_metadata.final:
+    if audio_metadata.message_type != AudioStreamFinal.DESCRIPTOR.full_name:
         raise DoraAudioMetadataError("DORA audio metadata is not a final marker")
-    if payload_bytes != b"":
-        raise DoraAudioMetadataError("DORA final audio marker payload must be empty")
-    return audio_metadata
+    try:
+        final = decode_proto_message_from_dora(payload, audio_metadata, AudioStreamFinal)
+        return DoraAudioFinalMarker(
+            source_id=final.source_id,
+            stream_id=final.stream_id,
+            seq=final.seq,
+            sample_index=final.sample_index,
+            capture_time_ns=final.capture_time_ns,
+            sample_rate_hz=final.format.sample_rate_hz,
+            channels=final.format.channels,
+            sample_format=_sample_format_from_proto(final.format.sample_format),
+            channel_layout=_channel_layout_from_proto(final.format.channel_layout),
+        )
+    except ValueError as exc:
+        raise DoraAudioMetadataError(
+            "DORA audio protobuf did not validate as AudioStreamFinal"
+        ) from exc
 
 
-def _decode_dora_audio_payload(payload: DoraAudioPayloadInput) -> bytes:
-    if isinstance(payload, bytes):
-        return payload
-    if isinstance(payload, pa.UInt8Array):
-        if payload.null_count != 0:
-            raise DoraAudioMetadataError("DORA audio payload must not contain null samples")
-        return bytes(payload.to_pylist())
-    payload_type = type(payload)
-    raise DoraAudioMetadataError(
-        f"DORA audio payload must be bytes or uint8 Arrow array, got "
-        f"{payload_type.__module__}.{payload_type.__name__}"
+def _audio_format_to_proto(audio_format: AudioFormat) -> PbAudioFormat:
+    return PbAudioFormat(
+        sample_rate_hz=audio_format.sample_rate_hz,
+        channels=audio_format.channels,
+        sample_format=_sample_format_to_proto(audio_format.sample_format),
+        channel_layout=_channel_layout_to_proto(audio_format.channel_layout),
     )
 
 
-def _encode_dora_audio_payload(payload: bytes) -> DoraAudioEncodedPayload:
-    return pa.array(payload, type=pa.uint8())
+def _audio_format_from_proto(audio_format: PbAudioFormat) -> AudioFormat:
+    return AudioFormat(
+        sample_rate_hz=audio_format.sample_rate_hz,
+        channels=audio_format.channels,
+        sample_format=_sample_format_from_proto(audio_format.sample_format),
+        channel_layout=_channel_layout_from_proto(audio_format.channel_layout),
+    )
 
 
-def _extract_dora_audio_metadata(metadata: DoraMetadataMapping) -> DoraMetadataMutableMapping:
-    missing_fields = [field for field in DORA_AUDIO_METADATA_FIELDS if field not in metadata]
-    if missing_fields:
-        missing = ", ".join(missing_fields)
-        raise DoraAudioMetadataError(
-            f"DORA audio metadata is invalid: missing required keys: {missing}"
-        )
-    return {field: metadata[field] for field in DORA_AUDIO_METADATA_FIELDS}
+def _sample_format_to_proto(sample_format: SampleFormat) -> int:
+    if sample_format == "s16le":
+        return SAMPLE_FORMAT_S16LE
+    if sample_format == "f32le":
+        return SAMPLE_FORMAT_F32LE
+    raise DoraAudioMetadataError(f"Unsupported sample format: {sample_format!r}")
+
+
+def _sample_format_from_proto(sample_format: int) -> SampleFormat:
+    if sample_format == SAMPLE_FORMAT_S16LE:
+        return "s16le"
+    if sample_format == SAMPLE_FORMAT_F32LE:
+        return "f32le"
+    raise DoraAudioMetadataError(f"Unsupported protobuf sample format: {sample_format}")
+
+
+def _channel_layout_to_proto(channel_layout: ChannelLayout) -> int:
+    if channel_layout == "interleaved":
+        return CHANNEL_LAYOUT_INTERLEAVED
+    raise DoraAudioMetadataError(f"Unsupported channel layout: {channel_layout!r}")
+
+
+def _channel_layout_from_proto(channel_layout: int) -> ChannelLayout:
+    if channel_layout == CHANNEL_LAYOUT_INTERLEAVED:
+        return "interleaved"
+    raise DoraAudioMetadataError(f"Unsupported protobuf channel layout: {channel_layout}")

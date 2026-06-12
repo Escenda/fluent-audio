@@ -5,17 +5,25 @@ description = "Standalone audio runtime for voice-agent and robotics integration
 requires-python = ">=3.11,<3.13"
 license = { text = "Apache-2.0" }
 dependencies = [
+    "fluent-audio-contracts",
     "pydantic>=2.0.0",
+    "protobuf>=6.33.5,<7",
+    "typing-extensions>=4.12.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "grpcio-tools",
     "pytest",
     "ruff",
 ]
 vad = [
     "numpy",
     "onnxruntime",
+]
+tts = [
+    "numpy",
+    "pyopenjtalk",
 ]
 dora = [
     "dora-rs>=0.5.0",
@@ -31,6 +39,11 @@ packages = ["src/fluent_audio"]
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["contracts/python/src/fluent_audio_contracts/fluent_audio/v1/*_pb2.py"]
+
+[tool.uv.sources]
+fluent-audio-contracts = { path = "contracts/python", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "contracts/python/src"]

@@ -1,0 +1,17 @@
+[package]
+name = "fluent-audio-contracts"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "fluent_audio_contracts"
+path = "src/lib.rs"
+
+[dependencies]
+prost = "0.14"
+prost-types = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3.2"

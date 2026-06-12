@@ -1,0 +1,70 @@
+nodes:
+  - id: agent_turn_replay
+    path: python
+    args: ../tests/fixtures/dora/agent_turn_replay.py --dora --session-id live-approval-smoke --user-turn-id user-turn-live-approval --assistant-turn-id assistant-turn-live-approval --text "Use the available shell command tool to run exactly: printf fluent-audio-live-approval-smoke. After the command completes, reply with exactly: fluent-audio-live-approval-smoke"
+    outputs:
+      - agent_turn
+
+  - id: codex_app_server
+    path: python
+    args: ../nodes/dialogue_engine/codex_app_server/main.py --dora --timeout-seconds 60 --approval-response-timeout-seconds 10 --control-host 127.0.0.1 --control-port 18184 --cwd .. --sandbox read-only --approval-policy on-request --approvals-reviewer user
+    inputs:
+      agent_turn:
+        source: agent_turn_replay/agent_turn
+        queue_size: 16
+        queue_policy: backpressure
+    outputs:
+      - agent_event
+      - agent_text
+      - agent_done
+      - agent_approval
+      - agent_tool
+
+  - id: transcript_replay
+    path: python
+    args: ../nodes/asr/transcript_replay/main.py --dora --session-id live-approval-smoke --user-turn-id user-turn-live-approval --stream-id asr/live-approval-smoke --text "live approval smoke" --start-sample-index 0 --end-sample-index 16000
+    outputs:
+      - transcript
+
+  - id: dora_web_bridge
+    path: python
+    args: ../bridges/dora_web_bridge/main.py --dora --session-id live-approval-smoke --port 18084 --codex-control-url http://127.0.0.1:18184 --input transcript --input agent_approval
+    inputs:
+      transcript:
+        source: transcript_replay/transcript
+        queue_size: 16
+        queue_policy: backpressure
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+
+  - id: dora_web_approval_submitter
+    path: python
+    args: ../tests/fixtures/dora/dora_web_approval_submitter.py --dora --bridge-url http://127.0.0.1:18084 --decision accept --timeout-seconds 20
+    inputs:
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+
+  - id: agent_output_probe
+    path: python
+    args: ../nodes/dialogue_engine/agent_output_probe.py --dora --session-id live-approval-smoke --user-turn-id user-turn-live-approval --agent-turn-id assistant-turn-live-approval --expected-min-text-deltas 1 --expected-approval-requests 1 --expected-tool-events 0 --expected-done-status completed --expected-text-contains fluent-audio-live-approval-smoke
+    inputs:
+      agent_text:
+        source: codex_app_server/agent_text
+        queue_size: 64
+        queue_policy: backpressure
+      agent_done:
+        source: codex_app_server/agent_done
+        queue_size: 16
+        queue_policy: backpressure
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+      agent_tool:
+        source: codex_app_server/agent_tool
+        queue_size: 16
+        queue_policy: backpressure

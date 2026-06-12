@@ -29,7 +29,7 @@ Allowed paths:
 Do not touch:
 
 - `nodes/`
-- `dataflows/`
+- `graphs/`
 - `src/fluent_audio/dora/`
 - `src/fluent_audio/offline/`
 - `pyproject.toml`, unless a dependency is truly required and explicitly justified in the report

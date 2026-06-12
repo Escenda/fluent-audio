@@ -6,6 +6,7 @@ from fluent_audio.dora import (
     decode_audio_chunk_from_dora,
     encode_audio_chunk_for_dora,
     encode_audio_final_marker_for_dora,
+    validate_dora_audio_final_marker,
     validate_dora_audio_metadata,
 )
 from nodes.media_graph.main import (
@@ -47,6 +48,7 @@ def _config(
     input_format: AudioFormat | None = None,
     output_format: AudioFormat | None = None,
     enable_tap: bool = False,
+    linear_gain: float = 1.0,
 ) -> MediaGraphConfig:
     return MediaGraphConfig(
         input_source_id="offline_file",
@@ -64,6 +66,7 @@ def _config(
         tap_start_seq=0,
         tap_start_sample_index=0,
         tap_start_capture_time_ns=0,
+        linear_gain=linear_gain,
     )
 
 
@@ -144,8 +147,8 @@ def _final_count(fake_node: FakeDoraOutputNode, output_id: str) -> int:
 
 def _final_metadata(fake_node: FakeDoraOutputNode, output_id: str):
     final_markers = [
-        validate_dora_audio_metadata(metadata)
-        for sent_output_id, _payload, metadata in fake_node.sent
+        validate_dora_audio_final_marker(payload, validate_dora_audio_metadata(metadata))
+        for sent_output_id, payload, metadata in fake_node.sent
         if sent_output_id == output_id and validate_dora_audio_metadata(metadata).final
     ]
     assert len(final_markers) == 1
@@ -209,6 +212,13 @@ def test_pipeline_description_contains_bounded_tee_queues_only_when_tap_enabled(
         "queue name=tap_audio_queue max-size-buffers=8 max-size-bytes=0 max-size-time=0"
         in tap_description
     )
+    assert "volume name=audio_gain volume=1" in single_branch_description
+
+
+def test_pipeline_description_includes_configured_linear_gain() -> None:
+    description = build_pipeline_description(_config(linear_gain=4.0))
+
+    assert "volume name=audio_gain volume=4" in description
 
 
 def test_gstreamer_graph_sets_appsrc_and_capsfilter_caps() -> None:
@@ -259,6 +269,23 @@ def test_passthrough_preserves_payload_and_emits_valid_tap_branch() -> None:
     assert summary.input_chunks == 2
     assert summary.main_output_chunks == 2
     assert summary.tap_output_chunks == 2
+
+
+def test_linear_gain_amplifies_s16_audio_payload() -> None:
+    sample = (1000).to_bytes(2, "little", signed=True)
+    fake_node = FakeDoraOutputNode()
+
+    run_media_graph_events(
+        [
+            _dora_input_event(_chunk(seq=0, sample_index=0, frame_count=1, payload=sample)),
+            _dora_final_event(seq=1, sample_index=1),
+        ],
+        fake_node,
+        _config(linear_gain=2.0),
+    )
+
+    payload = b"".join(chunk.payload for chunk in _output_chunks(fake_node, "audio"))
+    assert int.from_bytes(payload[:2], "little", signed=True) == 2000
 
 
 def test_resample_emits_output_format_and_contiguous_metadata() -> None:

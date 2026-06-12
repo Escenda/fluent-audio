@@ -1,6 +1,6 @@
 # Raw PCM IO Subagent Prompt
 
-You are the raw PCM IO implementation subagent for `/home/aspa/repos/fluent-audio`.
+You are the raw PCM IO implementation subagent for this repository.
 
 Read these files first:
 
@@ -34,13 +34,13 @@ Your output will be reviewed against [raw-pcm-io-review-gate.md](raw-pcm-io-revi
 
 ## Allowed Write Paths
 
-- `nodes/io/sources/raw_pcm_source/`
-- `nodes/io/sinks/raw_pcm_sink/`
+- `nodes/audio_device/raw_pcm_source/`
+- `nodes/audio_device/raw_pcm_sink/`
 - `src/fluent_audio/offline/`
 - `src/fluent_audio/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
-- `dataflows/offline_roundtrip.yml`
-- `dataflows/README.md`
-- `tests/nodes/io/`
+- `graphs/offline_roundtrip.yml`
+- `graphs/README.md`
+- `tests/nodes/audio_device/`
 - `tests/fixtures/offline/`
 - `docs/architecture/build-plan.md`, only after the relevant representative verification passes
 - `docs/architecture/raw-pcm-io-implementation-review.md`
@@ -58,8 +58,8 @@ Do not touch:
 `raw_pcm_source` and `raw_pcm_sink` may remain Green only while the review gate passes and these commands pass:
 
 ```bash
-uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/io
-uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/io tests/nodes/io
+uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/audio_device
+uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/audio_device tests/nodes/audio_device
 uv run --extra dora python -c "from dora import Node; print(Node)"
 ```
 
@@ -68,7 +68,7 @@ Passing tests without the DORA process boundary required by [raw-pcm-io-review-g
 You may mark `offline_roundtrip_dataflow` Green only after an actual DORA dataflow smoke passes and output bytes compare exactly:
 
 ```bash
-dora run dataflows/offline_roundtrip.yml --uv
+dora run graphs/offline_roundtrip.yml --uv
 cmp tests/fixtures/offline/input.s16le artifacts/offline/output.s16le
 ```
 

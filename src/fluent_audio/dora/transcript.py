@@ -1,138 +1,93 @@
-"""Typed DORA metadata helpers for streaming transcript events."""
+"""DORA protobuf helpers for streaming transcript events."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Literal, Self, TypeAlias
+from typing import TypeAlias
 
-import pyarrow as pa
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import TranscriptDelta, TranscriptFinal
-from fluent_audio.dora.audio import DoraMetadataMapping, DoraMetadataMutableMapping
-
-TranscriptEvent: TypeAlias = TranscriptDelta | TranscriptFinal
-DoraTranscriptKind: TypeAlias = Literal["delta", "final", "stream_final"]
-DoraTranscriptPayloadInput: TypeAlias = bytes | pa.UInt8Array
-DoraTranscriptEncodedPayload: TypeAlias = pa.UInt8Array
-
-DORA_TRANSCRIPT_METADATA_FIELDS: tuple[str, ...] = (
-    "kind",
-    "session_id",
-    "user_turn_id",
-    "stream_id",
-    "seq",
-    "start_sample_index",
-    "end_sample_index",
+from fluent_audio.contracts import TranscriptDelta, TranscriptFinal, TranscriptPartial
+from fluent_audio.dora.protobuf import (
+    DoraMetadataMapping,
+    DoraProtobufEncodedPayload,
+    DoraProtobufMetadata,
+    DoraProtobufPayloadInput,
+    decode_proto_message_from_dora,
+    encode_proto_message_for_dora,
+    validate_dora_protobuf_metadata,
 )
+from fluent_audio_contracts.fluent_audio.v1.asr_pb2 import (
+    TranscriptDelta as PbTranscriptDelta,
+    TranscriptFinal as PbTranscriptFinal,
+    TranscriptPartial as PbTranscriptPartial,
+    TranscriptStreamFinal,
+)
+
+TranscriptEvent: TypeAlias = TranscriptDelta | TranscriptFinal | TranscriptPartial
+DoraTranscriptPayloadInput: TypeAlias = DoraProtobufPayloadInput
+DoraTranscriptEncodedPayload: TypeAlias = DoraProtobufEncodedPayload
+DoraTranscriptMetadata: TypeAlias = DoraProtobufMetadata
 
 
 class DoraTranscriptMetadataError(ValueError):
-    """Raised when DORA transcript metadata cannot validate an event."""
+    """Raised when DORA transcript protobuf payloads cannot validate."""
 
 
 class DoraTranscriptStreamFinalMarkerError(DoraTranscriptMetadataError):
     """Raised when a DORA transcript stream marker is decoded as a transcript."""
 
 
-class DoraTranscriptMetadata(BaseModel):
-    """Flat DORA metadata needed to reconstruct one transcript event."""
-
+class DoraTranscriptStreamFinalMarker(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
-    kind: DoraTranscriptKind
     session_id: str = Field(min_length=1)
-    user_turn_id: str
     stream_id: str = Field(min_length=1)
     seq: int = Field(ge=0)
     start_sample_index: int = Field(ge=0)
     end_sample_index: int = Field(ge=0)
 
-    @model_validator(mode="after")
-    def validate_kind_fields(self) -> Self:
-        if self.kind == "delta":
-            if self.user_turn_id == "":
-                raise ValueError("DORA transcript delta requires non-empty user_turn_id")
-            if self.start_sample_index != 0:
-                raise ValueError(
-                    "DORA transcript delta metadata must have start_sample_index=0"
-                )
-            if self.end_sample_index != 0:
-                raise ValueError(
-                    "DORA transcript delta metadata must have end_sample_index=0"
-                )
-        elif self.kind == "final":
-            if self.user_turn_id == "":
-                raise ValueError("DORA transcript final requires non-empty user_turn_id")
-            if self.end_sample_index <= self.start_sample_index:
-                raise ValueError(
-                    "DORA transcript final requires end_sample_index > "
-                    "start_sample_index"
-                )
-        elif self.kind == "stream_final":
-            if self.user_turn_id != "":
-                raise ValueError(
-                    "DORA transcript stream final marker must have empty user_turn_id"
-                )
-            if self.end_sample_index != self.start_sample_index:
-                raise ValueError(
-                    "DORA transcript stream final marker requires "
-                    "end_sample_index == start_sample_index"
-                )
-        return self
-
-    def to_dora_metadata(self) -> DoraMetadataMutableMapping:
-        return {
-            "kind": self.kind,
-            "session_id": self.session_id,
-            "user_turn_id": self.user_turn_id,
-            "stream_id": self.stream_id,
-            "seq": self.seq,
-            "start_sample_index": self.start_sample_index,
-            "end_sample_index": self.end_sample_index,
-        }
-
-
-DoraTranscriptMetadataInput: TypeAlias = (
-    DoraMetadataMapping | DoraTranscriptMetadata | None
-)
-
 
 def encode_transcript_delta_for_dora(
     event: TranscriptDelta,
 ) -> tuple[DoraTranscriptEncodedPayload, DoraTranscriptMetadata]:
-    """Encode a transcript delta as UTF-8 DORA payload plus metadata."""
-
-    return (
-        _encode_dora_transcript_payload(event.text),
-        DoraTranscriptMetadata(
-            kind="delta",
+    return encode_proto_message_for_dora(
+        PbTranscriptDelta(
             session_id=event.session_id,
             user_turn_id=event.user_turn_id,
             stream_id=event.stream_id,
             seq=event.seq,
-            start_sample_index=0,
-            end_sample_index=0,
-        ),
+            text=event.text,
+        )
+    )
+
+
+def encode_transcript_partial_for_dora(
+    event: TranscriptPartial,
+) -> tuple[DoraTranscriptEncodedPayload, DoraTranscriptMetadata]:
+    return encode_proto_message_for_dora(
+        PbTranscriptPartial(
+            session_id=event.session_id,
+            user_turn_id=event.user_turn_id,
+            stream_id=event.stream_id,
+            seq=event.seq,
+            text=event.text,
+        )
     )
 
 
 def encode_transcript_final_for_dora(
     event: TranscriptFinal,
 ) -> tuple[DoraTranscriptEncodedPayload, DoraTranscriptMetadata]:
-    """Encode a final transcript as UTF-8 DORA payload plus metadata."""
-
-    return (
-        _encode_dora_transcript_payload(event.text),
-        DoraTranscriptMetadata(
-            kind="final",
+    return encode_proto_message_for_dora(
+        PbTranscriptFinal(
             session_id=event.session_id,
             user_turn_id=event.user_turn_id,
             stream_id=event.stream_id,
             seq=event.seq,
+            text=event.text,
             start_sample_index=event.start_sample_index,
             end_sample_index=event.end_sample_index,
-        ),
+        )
     )
 
 
@@ -143,175 +98,136 @@ def encode_transcript_stream_final_marker_for_dora(
     seq: int,
     sample_index: int,
 ) -> tuple[DoraTranscriptEncodedPayload, DoraTranscriptMetadata]:
-    """Encode explicit DORA transcript stream completion."""
-
-    return (
-        _encode_empty_dora_transcript_payload(),
-        DoraTranscriptMetadata(
-            kind="stream_final",
+    return encode_proto_message_for_dora(
+        TranscriptStreamFinal(
             session_id=session_id,
-            user_turn_id="",
             stream_id=stream_id,
             seq=seq,
-            start_sample_index=sample_index,
-            end_sample_index=sample_index,
-        ),
+            sample_index=sample_index,
+        )
     )
 
 
 def validate_dora_transcript_metadata(
-    metadata: DoraTranscriptMetadataInput,
+    metadata: DoraMetadataMapping | DoraTranscriptMetadata | None,
 ) -> DoraTranscriptMetadata:
-    """Validate DORA transcript metadata at the boundary."""
-
-    if metadata is None:
-        raise DoraTranscriptMetadataError("DORA transcript metadata is required")
-    if isinstance(metadata, DoraTranscriptMetadata):
-        return metadata
-    if not isinstance(metadata, Mapping):
-        raise DoraTranscriptMetadataError("DORA transcript metadata is invalid")
-
-    extracted_metadata = _extract_dora_transcript_metadata(metadata)
     try:
-        return DoraTranscriptMetadata.model_validate(extracted_metadata)
+        protobuf_metadata = validate_dora_protobuf_metadata(metadata)
     except ValueError as exc:
+        raise DoraTranscriptMetadataError("DORA transcript metadata is invalid") from exc
+    if protobuf_metadata.message_type not in (
+        PbTranscriptDelta.DESCRIPTOR.full_name,
+        PbTranscriptPartial.DESCRIPTOR.full_name,
+        PbTranscriptFinal.DESCRIPTOR.full_name,
+        TranscriptStreamFinal.DESCRIPTOR.full_name,
+    ):
         raise DoraTranscriptMetadataError(
-            "DORA transcript metadata is invalid"
-        ) from exc
+            f"DORA transcript metadata message type is invalid: {protobuf_metadata.message_type!r}"
+        )
+    return protobuf_metadata
 
 
 def decode_transcript_delta_from_dora(
     payload: DoraTranscriptPayloadInput,
-    metadata: DoraTranscriptMetadataInput,
+    metadata: DoraMetadataMapping | DoraTranscriptMetadata | None,
 ) -> TranscriptDelta:
-    """Decode DORA payload and metadata into a validated transcript delta."""
-
     transcript_metadata = validate_dora_transcript_metadata(metadata)
-    if transcript_metadata.kind == "stream_final":
+    if transcript_metadata.message_type == TranscriptStreamFinal.DESCRIPTOR.full_name:
         raise DoraTranscriptStreamFinalMarkerError(
             "DORA transcript stream final marker is not a TranscriptDelta"
         )
-    if transcript_metadata.kind != "delta":
-        raise DoraTranscriptMetadataError(
-            "DORA transcript metadata is not a transcript delta"
-        )
-    text = _decode_dora_transcript_payload(payload, require_text=True)
+    if transcript_metadata.message_type != PbTranscriptDelta.DESCRIPTOR.full_name:
+        raise DoraTranscriptMetadataError("DORA transcript metadata is not a transcript delta")
     try:
+        delta = decode_proto_message_from_dora(payload, transcript_metadata, PbTranscriptDelta)
         return TranscriptDelta(
-            session_id=transcript_metadata.session_id,
-            user_turn_id=transcript_metadata.user_turn_id,
-            stream_id=transcript_metadata.stream_id,
-            seq=transcript_metadata.seq,
-            text=text,
+            session_id=delta.session_id,
+            user_turn_id=delta.user_turn_id,
+            stream_id=delta.stream_id,
+            seq=delta.seq,
+            text=delta.text,
         )
     except ValueError as exc:
         raise DoraTranscriptMetadataError(
-            "DORA transcript metadata did not validate as TranscriptDelta"
+            "DORA transcript protobuf did not validate as TranscriptDelta"
         ) from exc
 
 
 def decode_transcript_final_from_dora(
     payload: DoraTranscriptPayloadInput,
-    metadata: DoraTranscriptMetadataInput,
+    metadata: DoraMetadataMapping | DoraTranscriptMetadata | None,
 ) -> TranscriptFinal:
-    """Decode DORA payload and metadata into a validated final transcript."""
-
     transcript_metadata = validate_dora_transcript_metadata(metadata)
-    if transcript_metadata.kind == "stream_final":
+    if transcript_metadata.message_type == TranscriptStreamFinal.DESCRIPTOR.full_name:
         raise DoraTranscriptStreamFinalMarkerError(
             "DORA transcript stream final marker is not a TranscriptFinal"
         )
-    if transcript_metadata.kind != "final":
-        raise DoraTranscriptMetadataError(
-            "DORA transcript metadata is not a transcript final"
-        )
-    text = _decode_dora_transcript_payload(payload, require_text=True)
+    if transcript_metadata.message_type != PbTranscriptFinal.DESCRIPTOR.full_name:
+        raise DoraTranscriptMetadataError("DORA transcript metadata is not a transcript final")
     try:
+        final = decode_proto_message_from_dora(payload, transcript_metadata, PbTranscriptFinal)
         return TranscriptFinal(
-            session_id=transcript_metadata.session_id,
-            user_turn_id=transcript_metadata.user_turn_id,
-            stream_id=transcript_metadata.stream_id,
-            seq=transcript_metadata.seq,
-            text=text,
-            start_sample_index=transcript_metadata.start_sample_index,
-            end_sample_index=transcript_metadata.end_sample_index,
+            session_id=final.session_id,
+            user_turn_id=final.user_turn_id,
+            stream_id=final.stream_id,
+            seq=final.seq,
+            text=final.text,
+            start_sample_index=final.start_sample_index,
+            end_sample_index=final.end_sample_index,
         )
     except ValueError as exc:
         raise DoraTranscriptMetadataError(
-            "DORA transcript metadata did not validate as TranscriptFinal"
+            "DORA transcript protobuf did not validate as TranscriptFinal"
+        ) from exc
+
+
+def decode_transcript_partial_from_dora(
+    payload: DoraTranscriptPayloadInput,
+    metadata: DoraMetadataMapping | DoraTranscriptMetadata | None,
+) -> TranscriptPartial:
+    transcript_metadata = validate_dora_transcript_metadata(metadata)
+    if transcript_metadata.message_type == TranscriptStreamFinal.DESCRIPTOR.full_name:
+        raise DoraTranscriptStreamFinalMarkerError(
+            "DORA transcript stream final marker is not a TranscriptPartial"
+        )
+    if transcript_metadata.message_type != PbTranscriptPartial.DESCRIPTOR.full_name:
+        raise DoraTranscriptMetadataError("DORA transcript metadata is not a transcript partial")
+    try:
+        partial = decode_proto_message_from_dora(
+            payload,
+            transcript_metadata,
+            PbTranscriptPartial,
+        )
+        return TranscriptPartial(
+            session_id=partial.session_id,
+            user_turn_id=partial.user_turn_id,
+            stream_id=partial.stream_id,
+            seq=partial.seq,
+            text=partial.text,
+        )
+    except ValueError as exc:
+        raise DoraTranscriptMetadataError(
+            "DORA transcript protobuf did not validate as TranscriptPartial"
         ) from exc
 
 
 def validate_dora_transcript_stream_final_marker(
     payload: DoraTranscriptPayloadInput,
-    metadata: DoraTranscriptMetadataInput,
-) -> DoraTranscriptMetadata:
-    """Validate an explicit DORA transcript stream final marker."""
-
+    metadata: DoraMetadataMapping | DoraTranscriptMetadata | None,
+) -> DoraTranscriptStreamFinalMarker:
     transcript_metadata = validate_dora_transcript_metadata(metadata)
-    if transcript_metadata.kind != "stream_final":
-        raise DoraTranscriptMetadataError(
-            "DORA transcript metadata is not a stream final marker"
-        )
-    _decode_dora_transcript_payload(payload, require_text=False)
-    return transcript_metadata
-
-
-def _decode_dora_transcript_payload(
-    payload: DoraTranscriptPayloadInput,
-    *,
-    require_text: bool,
-) -> str:
-    payload_bytes = _decode_dora_transcript_payload_bytes(payload)
-    if not payload_bytes:
-        if require_text:
-            raise DoraTranscriptMetadataError("DORA transcript payload must not be empty")
-        return ""
+    if transcript_metadata.message_type != TranscriptStreamFinal.DESCRIPTOR.full_name:
+        raise DoraTranscriptMetadataError("DORA transcript metadata is not a stream final marker")
     try:
-        text = payload_bytes.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise DoraTranscriptMetadataError(
-            "DORA transcript payload must be valid UTF-8"
-        ) from exc
-    return text
-
-
-def _decode_dora_transcript_payload_bytes(
-    payload: DoraTranscriptPayloadInput,
-) -> bytes:
-    if isinstance(payload, bytes):
-        return payload
-    if isinstance(payload, pa.UInt8Array):
-        if payload.null_count != 0:
-            raise DoraTranscriptMetadataError(
-                "DORA transcript payload must not contain null values"
-            )
-        return bytes(payload.to_pylist())
-    payload_type = type(payload)
-    raise DoraTranscriptMetadataError(
-        f"DORA transcript payload must be bytes or uint8 Arrow array, got "
-        f"{payload_type.__module__}.{payload_type.__name__}"
-    )
-
-
-def _encode_dora_transcript_payload(text: str) -> DoraTranscriptEncodedPayload:
-    return pa.array(text.encode("utf-8"), type=pa.uint8())
-
-
-def _encode_empty_dora_transcript_payload() -> DoraTranscriptEncodedPayload:
-    return pa.array([], type=pa.uint8())
-
-
-def _extract_dora_transcript_metadata(
-    metadata: DoraMetadataMapping,
-) -> DoraMetadataMutableMapping:
-    missing_fields = [
-        field for field in DORA_TRANSCRIPT_METADATA_FIELDS if field not in metadata
-    ]
-    if missing_fields:
-        missing = ", ".join(missing_fields)
-        raise DoraTranscriptMetadataError(
-            "DORA transcript metadata is invalid: "
-            f"missing required keys: {missing}"
+        final = decode_proto_message_from_dora(payload, transcript_metadata, TranscriptStreamFinal)
+        return DoraTranscriptStreamFinalMarker(
+            session_id=final.session_id,
+            stream_id=final.stream_id,
+            seq=final.seq,
+            start_sample_index=final.sample_index,
+            end_sample_index=final.sample_index,
         )
-    return {field: metadata[field] for field in DORA_TRANSCRIPT_METADATA_FIELDS}
+    except ValueError as exc:
+        raise DoraTranscriptMetadataError(
+            "DORA transcript protobuf did not validate as TranscriptStreamFinal"
+        ) from exc

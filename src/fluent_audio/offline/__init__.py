@@ -19,6 +19,14 @@ from fluent_audio.offline.raw_pcm import (
     write_raw_pcm_chunk_jsonl,
     write_raw_pcm_chunks,
 )
+from fluent_audio.offline.wav_pcm import (
+    WavPcmEmptyInputError,
+    WavPcmError,
+    WavPcmFileNotFoundError,
+    WavPcmReadConfig,
+    WavPcmUnsupportedFormatError,
+    iter_wav_pcm_chunks,
+)
 
 __all__ = [
     "RawPcmChunkJsonRecord",
@@ -38,4 +46,10 @@ __all__ = [
     "iter_raw_pcm_chunks",
     "write_raw_pcm_chunk_jsonl",
     "write_raw_pcm_chunks",
+    "WavPcmEmptyInputError",
+    "WavPcmError",
+    "WavPcmFileNotFoundError",
+    "WavPcmReadConfig",
+    "WavPcmUnsupportedFormatError",
+    "iter_wav_pcm_chunks",
 ]

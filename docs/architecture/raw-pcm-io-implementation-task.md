@@ -24,13 +24,13 @@ This path exists to verify the audio transport contract before CPAL, GStreamer, 
 
 Allowed paths:
 
-- `nodes/io/sources/raw_pcm_source/`
-- `nodes/io/sinks/raw_pcm_sink/`
+- `nodes/audio_device/raw_pcm_source/`
+- `nodes/audio_device/raw_pcm_sink/`
 - `src/fluent_audio/offline/`
 - `src/fluent_audio/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
-- `dataflows/offline_roundtrip.yml`
-- `dataflows/README.md`
-- `tests/nodes/io/`
+- `graphs/offline_roundtrip.yml`
+- `graphs/README.md`
+- `tests/nodes/audio_device/`
 - `tests/fixtures/offline/`
 - `docs/architecture/build-plan.md`, only after the representative verification passes
 
@@ -104,7 +104,7 @@ If DORA metadata cannot carry a required type directly, introduce a typed encode
 
 ## Offline Roundtrip Dataflow
 
-Add `dataflows/offline_roundtrip.yml`.
+Add `graphs/offline_roundtrip.yml`.
 
 Required properties:
 
@@ -115,7 +115,7 @@ Required properties:
 
 ## Tests
 
-Add tests under `tests/nodes/io/`.
+Add tests under `tests/nodes/audio_device/`.
 
 Required coverage:
 
@@ -147,9 +147,9 @@ Only after all representative verification commands pass:
 Representative verification:
 
 ```bash
-uv run --extra dev python -m pytest tests/nodes/io
+uv run --extra dev python -m pytest tests/nodes/audio_device
 uv run --extra dev python -m ruff check .
-dora run dataflows/offline_roundtrip.yml --uv
+dora run graphs/offline_roundtrip.yml --uv
 cmp tests/fixtures/offline/input.s16le artifacts/offline/output.s16le
 ```
 

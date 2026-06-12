@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package fluent_audio.v1;
+
+enum PlaybackCommandKind {
+  PLAYBACK_COMMAND_KIND_UNSPECIFIED = 0;
+  PLAYBACK_COMMAND_KIND_STOP = 1;
+  PLAYBACK_COMMAND_KIND_PAUSE = 2;
+  PLAYBACK_COMMAND_KIND_RESUME = 3;
+  PLAYBACK_COMMAND_KIND_CLEAR = 4;
+}
+
+enum PlaybackStateKind {
+  PLAYBACK_STATE_KIND_UNSPECIFIED = 0;
+  PLAYBACK_STATE_KIND_QUEUED = 1;
+  PLAYBACK_STATE_KIND_PLAYING = 2;
+  PLAYBACK_STATE_KIND_PAUSED = 3;
+  PLAYBACK_STATE_KIND_STOPPED = 4;
+  PLAYBACK_STATE_KIND_COMPLETED = 5;
+  PLAYBACK_STATE_KIND_CANCELLED = 6;
+  PLAYBACK_STATE_KIND_FAILED = 7;
+}
+
+enum PlaybackDoneStatus {
+  PLAYBACK_DONE_STATUS_UNSPECIFIED = 0;
+  PLAYBACK_DONE_STATUS_COMPLETED = 1;
+  PLAYBACK_DONE_STATUS_STOPPED = 2;
+  PLAYBACK_DONE_STATUS_CANCELLED = 3;
+  PLAYBACK_DONE_STATUS_FAILED = 4;
+}
+
+message PlaybackCommand {
+  PlaybackCommandKind command = 1;
+  string request_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+}
+
+message PlaybackState {
+  string request_id = 1;
+  string session_id = 2;
+  string user_turn_id = 3;
+  string stream_id = 4;
+  PlaybackStateKind state = 5;
+  uint64 seq = 6;
+  uint64 played_frames = 7;
+  optional string reason = 8;
+}
+
+message PlaybackDone {
+  string request_id = 1;
+  string session_id = 2;
+  string user_turn_id = 3;
+  string stream_id = 4;
+  PlaybackDoneStatus status = 5;
+  optional uint64 final_sequence = 6;
+  optional uint64 total_frames = 7;
+  optional string reason = 8;
+}

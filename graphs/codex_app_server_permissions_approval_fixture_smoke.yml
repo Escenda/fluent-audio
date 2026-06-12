@@ -1,0 +1,60 @@
+nodes:
+  - id: agent_turn_replay
+    path: python
+    args: ../tests/fixtures/dora/agent_turn_replay.py --dora --session-id fixture-permissions-smoke --user-turn-id user-turn-permissions-smoke --assistant-turn-id assistant-turn-permissions-smoke --text Hello
+    outputs:
+      - agent_turn
+
+  - id: codex_app_server
+    path: python
+    args: ../nodes/dialogue_engine/codex_app_server/main.py --dora --timeout-seconds 15 --approval-response-timeout-seconds 15 --control-host 127.0.0.1 --control-port 18186 --sandbox read-only --approval-policy never --app-server-command-file ../tests/fixtures/jsonrpc/codex_app_server_permissions_smoke.command
+    inputs:
+      agent_turn:
+        source: agent_turn_replay/agent_turn
+        queue_size: 16
+        queue_policy: backpressure
+    outputs:
+      - agent_event
+      - agent_text
+      - agent_done
+      - agent_approval
+      - agent_tool
+
+  - id: dora_web_bridge
+    path: python
+    args: ../bridges/dora_web_bridge/main.py --dora --session-id fixture-permissions-smoke --port 18086 --codex-control-url http://127.0.0.1:18186 --input agent_approval
+    inputs:
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+
+  - id: dora_web_approval_submitter
+    path: python
+    args: ../tests/fixtures/dora/dora_web_approval_submitter.py --dora --bridge-url http://127.0.0.1:18086 --decision accept --scope session --timeout-seconds 15
+    inputs:
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+
+  - id: agent_output_probe
+    path: python
+    args: ../nodes/dialogue_engine/agent_output_probe.py --dora --session-id fixture-permissions-smoke --user-turn-id user-turn-permissions-smoke --agent-turn-id assistant-turn-permissions-smoke --expected-min-text-deltas 1 --expected-approval-requests 1 --expected-tool-events 0 --expected-done-status completed --expected-text-contains Hello.
+    inputs:
+      agent_text:
+        source: codex_app_server/agent_text
+        queue_size: 64
+        queue_policy: backpressure
+      agent_done:
+        source: codex_app_server/agent_done
+        queue_size: 16
+        queue_policy: backpressure
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+      agent_tool:
+        source: codex_app_server/agent_tool
+        queue_size: 16
+        queue_policy: backpressure

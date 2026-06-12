@@ -2,6 +2,7 @@
 
 from fluent_audio.contracts import (
     AgentApprovalRequest,
+    AgentApprovalResponse,
     AgentCancelRequest,
     AgentTextDelta,
     AgentToolEvent,
@@ -11,6 +12,7 @@ from fluent_audio.contracts import (
     AsrStop,
     AudioChunk,
     AudioFormat,
+    AudioLevelEvent,
     DialogueEvent,
     DialogueInput,
     PlaybackCommand,
@@ -19,7 +21,9 @@ from fluent_audio.contracts import (
     SynthesizedAudioChunk,
     TranscriptDelta,
     TranscriptFinal,
+    TranscriptPartial,
     TtsTextChunk,
+    TtsTextStreamFinal,
     TurnEvent,
     TurnIds,
     VoiceActivityEvent,
@@ -28,6 +32,7 @@ from fluent_audio.contracts import (
 
 __all__ = [
     "AgentApprovalRequest",
+    "AgentApprovalResponse",
     "AgentCancelRequest",
     "AgentTextDelta",
     "AgentToolEvent",
@@ -37,6 +42,7 @@ __all__ = [
     "AsrStop",
     "AudioChunk",
     "AudioFormat",
+    "AudioLevelEvent",
     "DialogueEvent",
     "DialogueInput",
     "PlaybackCommand",
@@ -45,7 +51,9 @@ __all__ = [
     "SynthesizedAudioChunk",
     "TranscriptDelta",
     "TranscriptFinal",
+    "TranscriptPartial",
     "TtsTextChunk",
+    "TtsTextStreamFinal",
     "TurnEvent",
     "TurnIds",
     "VoiceActivityEvent",

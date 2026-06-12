@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package fluent_audio.v1;
+
+import "fluent_audio/v1/audio.proto";
+
+message TtsTextChunk {
+  string request_id = 1;
+  string session_id = 2;
+  string user_turn_id = 3;
+  string assistant_turn_id = 4;
+  uint64 seq = 5;
+  string text = 6;
+  bool is_final = 7;
+}
+
+message TtsTextStreamFinal {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string assistant_turn_id = 3;
+  uint64 seq = 4;
+}
+
+message SynthesizedAudioChunk {
+  string request_id = 1;
+  string session_id = 2;
+  string user_turn_id = 3;
+  string assistant_turn_id = 4;
+  uint64 seq = 5;
+  AudioFrame audio = 6;
+}
+
+message SynthesizedAudioStreamFinal {
+  string request_id = 1;
+  string session_id = 2;
+  string user_turn_id = 3;
+  string assistant_turn_id = 4;
+  uint64 seq = 5;
+  string audio_source_id = 6;
+  string audio_stream_id = 7;
+  uint64 audio_seq = 8;
+  uint64 audio_sample_index = 9;
+  uint64 audio_capture_time_ns = 10;
+  AudioFormat audio_format = 11;
+}

@@ -1,0 +1,75 @@
+nodes:
+  - id: raw_pcm_source
+    path: python
+    args: ../nodes/audio_device/raw_pcm_source/main.py --dora --input ../tests/fixtures/vad/harvard_16k_mono_32768f.s16le --sample-rate-hz 16000 --channels 1 --sample-format s16le --channel-layout interleaved --chunk-frames 512 --source-id offline_fixture --stream-id audio/offline/harvard --start-seq 0 --start-sample-index 0 --start-capture-time-ns 0 --replay-speed 1.0
+    outputs:
+      - audio
+
+  - id: media_graph
+    path: python
+    args: ../nodes/media_graph/main.py --dora --input-source-id offline_fixture --input-stream-id audio/offline/harvard --input-sample-rate-hz 16000 --input-channels 1 --input-sample-format s16le --input-channel-layout interleaved --output-source-id media_graph --output-stream-id audio/media_graph/asr --output-sample-rate-hz 16000 --output-channels 1 --output-sample-format s16le --output-channel-layout interleaved --output-start-seq 0 --output-start-sample-index 0 --output-start-capture-time-ns 0
+    inputs:
+      audio:
+        source: raw_pcm_source/audio
+        queue_size: 128
+        queue_policy: backpressure
+    outputs:
+      - audio
+
+  - id: vad
+    path: python
+    args: ../nodes/vad/silero/main.py --dora --input-source-id media_graph --input-stream-id audio/media_graph/asr --output-source-id silero_vad --output-stream-id activity/vad/asr --threshold 0.5
+    inputs:
+      audio:
+        source: media_graph/audio
+        queue_size: 128
+        queue_policy: backpressure
+    outputs:
+      - activity
+      - meter
+
+  - id: turn_detector
+    path: python
+    args: ../nodes/vad/turn_detector/main.py --dora --input-source-id silero_vad --input-stream-id activity/vad/asr --session-id session-smoke --output-stream-id turn/session-smoke --end-silence-frames 12000
+    inputs:
+      activity:
+        source: vad/activity
+        queue_size: 128
+        queue_policy: backpressure
+    outputs:
+      - turn
+
+  - id: asr_control_from_turn
+    path: python
+    args: ../nodes/asr/asr_control_from_turn/main.py --dora --input-session-id session-smoke --input-turn-stream-id turn/session-smoke --output-audio-stream-id audio/media_graph/asr --asr-prebuffer-frames 16000 --output-drain-seconds 2.0
+    inputs:
+      turn:
+        source: turn_detector/turn
+        queue_size: 128
+        queue_policy: backpressure
+    outputs:
+      - asr_control
+
+  - id: nemotron_streaming
+    path: python
+    args: ../nodes/asr/nemotron_streaming/main.py --dora --input-audio-source-id media_graph --input-audio-stream-id audio/media_graph/asr --session-id session-smoke --output-stream-id transcript/session-smoke --prebuffer-frames 32768 --control-holdback-frames 32768 --sample-rate-hz 16000 --channels 1 --sample-format s16le --channel-layout interleaved --backend nemo --model-name nvidia/nemotron-3.5-asr-streaming-0.6b --target-lang en-US --att-context-right-frames 3
+    inputs:
+      audio:
+        source: media_graph/audio
+        queue_size: 128
+        queue_policy: backpressure
+      asr_control:
+        source: asr_control_from_turn/asr_control
+        queue_size: 32
+        queue_policy: backpressure
+    outputs:
+      - transcript
+
+  - id: transcript_probe
+    path: python
+    args: ../nodes/asr/nemotron_streaming/transcript_probe.py --dora --session-id session-smoke --stream-id transcript/session-smoke --expected-min-deltas 0 --expected-finals 1 --expected-final-sample-index 32768 --expected-last-text-compact Thestales
+    inputs:
+      transcript:
+        source: nemotron_streaming/transcript
+        queue_size: 128
+        queue_policy: backpressure

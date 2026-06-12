@@ -16,10 +16,22 @@ class TtsTextChunk(BaseModel):
 
     request_id: NonEmptyString
     session_id: NonEmptyString
+    user_turn_id: NonEmptyString
     assistant_turn_id: NonEmptyString
     seq: int = Field(ge=0)
     text: NonEmptyString
     is_final: bool
+
+
+class TtsTextStreamFinal(BaseModel):
+    """Explicit completion marker for one assistant turn's TTS text stream."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    session_id: NonEmptyString
+    user_turn_id: NonEmptyString
+    assistant_turn_id: NonEmptyString
+    seq: int = Field(ge=0)
 
 
 class SynthesizedAudioChunk(BaseModel):
@@ -29,6 +41,7 @@ class SynthesizedAudioChunk(BaseModel):
 
     request_id: NonEmptyString
     session_id: NonEmptyString
+    user_turn_id: NonEmptyString
     assistant_turn_id: NonEmptyString
     seq: int = Field(ge=0)
     audio: AudioChunk

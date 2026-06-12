@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from fluent_audio.contracts import TranscriptDelta, TranscriptFinal
+from fluent_audio.contracts import TranscriptDelta, TranscriptFinal, TranscriptPartial
 
 
 def test_transcript_models_preserve_turn_ids_and_text() -> None:
@@ -21,15 +21,34 @@ def test_transcript_models_preserve_turn_ids_and_text() -> None:
         start_sample_index=320,
         end_sample_index=3200,
     )
+    partial = TranscriptPartial(
+        session_id="session-1",
+        user_turn_id="user-turn-1",
+        stream_id="mic/main",
+        seq=4,
+        text="hello wor",
+    )
 
     assert delta.user_turn_id == "user-turn-1"
     assert delta.text == "hello"
     assert final.text == "hello world"
+    assert partial.text == "hello wor"
 
 
 def test_transcript_delta_rejects_empty_text() -> None:
     with pytest.raises(ValidationError):
         TranscriptDelta(
+            session_id="session-1",
+            user_turn_id="user-turn-1",
+            stream_id="mic/main",
+            seq=2,
+            text="",
+        )
+
+
+def test_transcript_partial_rejects_empty_text() -> None:
+    with pytest.raises(ValidationError):
+        TranscriptPartial(
             session_id="session-1",
             user_turn_id="user-turn-1",
             stream_id="mic/main",

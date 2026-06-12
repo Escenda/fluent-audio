@@ -1,0 +1,14 @@
+python
+../tests/fixtures/jsonrpc/codex_app_server_jsonrpc_fixture.py
+--text
+Hello.
+--expected-turns
+1
+--approval-request-id
+approval-request-fixture-1
+--approval-command
+robot.move
+--approval-reason
+Allow_robot_motion?
+--expected-approval-decision
+accept

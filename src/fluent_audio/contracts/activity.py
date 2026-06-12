@@ -23,6 +23,21 @@ class VoiceActivityEvent(BaseModel):
     speech_probability: float = Field(ge=0.0, le=1.0)
 
 
+class AudioLevelEvent(BaseModel):
+    """Display-oriented audio level for one VAD evaluation span."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    source_id: NonEmptyString
+    stream_id: NonEmptyString
+    seq: int = Field(ge=0)
+    sample_index: int = Field(ge=0)
+    frame_count: int = Field(gt=0)
+    rms_dbfs: float = Field(le=0.0)
+    peak_dbfs: float = Field(le=0.0)
+    speech_probability: float = Field(ge=0.0, le=1.0)
+
+
 class TurnEvent(BaseModel):
     """Turn boundary signal derived from activity and ASR context."""
 

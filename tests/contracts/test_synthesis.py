@@ -1,13 +1,20 @@
 import pytest
 from pydantic import ValidationError
 
-from fluent_audio.contracts import AudioChunk, AudioFormat, SynthesizedAudioChunk, TtsTextChunk
+from fluent_audio.contracts import (
+    AudioChunk,
+    AudioFormat,
+    SynthesizedAudioChunk,
+    TtsTextChunk,
+    TtsTextStreamFinal,
+)
 
 
 def test_tts_text_chunk_validates_correlation_ids() -> None:
     chunk = TtsTextChunk(
         request_id="tts-1",
         session_id="session-1",
+        user_turn_id="user-turn-1",
         assistant_turn_id="assistant-turn-1",
         seq=0,
         text="hello",
@@ -16,6 +23,18 @@ def test_tts_text_chunk_validates_correlation_ids() -> None:
 
     assert chunk.request_id == "tts-1"
     assert chunk.text == "hello"
+
+
+def test_tts_text_stream_final_validates_turn_correlation() -> None:
+    marker = TtsTextStreamFinal(
+        session_id="session-1",
+        user_turn_id="user-turn-1",
+        assistant_turn_id="assistant-turn-1",
+        seq=1,
+    )
+
+    assert marker.session_id == "session-1"
+    assert marker.assistant_turn_id == "assistant-turn-1"
 
 
 def test_synthesized_audio_chunk_reuses_audio_chunk_validation() -> None:
@@ -32,6 +51,7 @@ def test_synthesized_audio_chunk_reuses_audio_chunk_validation() -> None:
     chunk = SynthesizedAudioChunk(
         request_id="tts-1",
         session_id="session-1",
+        user_turn_id="user-turn-1",
         assistant_turn_id="assistant-turn-1",
         seq=0,
         audio=audio,
@@ -46,6 +66,7 @@ def test_synthesized_audio_chunk_rejects_invalid_nested_audio() -> None:
             {
                 "request_id": "tts-1",
                 "session_id": "session-1",
+                "user_turn_id": "user-turn-1",
                 "assistant_turn_id": "assistant-turn-1",
                 "seq": 0,
                 "audio": {

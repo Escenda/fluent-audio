@@ -1,0 +1,192 @@
+nodes:
+  - id: transcript_replay
+    path: python
+    args: ../nodes/asr/transcript_replay/main.py --dora --session-id session-smoke-1 --user-turn-id user-turn-smoke-1 --stream-id asr/main --text Hello --start-sample-index 0 --end-sample-index 16000
+    outputs:
+      - transcript
+
+  - id: dialogue_engine
+    path: python
+    args: ../nodes/dialogue_engine/main.py --dora --session-id session-smoke-1 --transcript-stream-id asr/main --output-drain-seconds 0.2
+    inputs:
+      transcript:
+        source: transcript_replay/transcript
+        queue_size: 16
+        queue_policy: backpressure
+      agent_event:
+        source: codex_app_server/agent_event
+        queue_size: 16
+        queue_policy: backpressure
+      playback_done:
+        source: playback_queue/playback_done
+        queue_size: 16
+        queue_policy: backpressure
+    outputs:
+      - agent_turn
+      - agent_cancel
+      - session
+      - dialogue
+      - tts_text
+
+  - id: codex_app_server
+    path: python
+    args: ../nodes/dialogue_engine/codex_app_server/main.py --dora --timeout-seconds 15 --approval-response-timeout-seconds 15 --control-host 127.0.0.1 --control-port 18183 --app-server-command-file ../tests/fixtures/jsonrpc/codex_app_server_smoke.command
+    inputs:
+      agent_turn:
+        source: dialogue_engine/agent_turn
+        queue_size: 16
+        queue_policy: backpressure
+      agent_cancel:
+        source: dialogue_engine/agent_cancel
+        queue_size: 16
+        queue_policy: backpressure
+    outputs:
+      - agent_event
+      - agent_text
+      - agent_done
+      - agent_approval
+      - agent_tool
+
+  - id: dora_web_approval_submitter
+    path: python
+    args: ../tests/fixtures/dora/dora_web_approval_submitter.py --dora --bridge-url http://127.0.0.1:18083 --decision accept --timeout-seconds 15
+    inputs:
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+
+  - id: tts_backend
+    path: python
+    args: ../nodes/tts/tts_backend/main.py --dora --endpoint-url http://127.0.0.1:18082/synthesize --timeout-seconds 15 --output-drain-seconds 0.2
+    inputs:
+      tts_text:
+        source: dialogue_engine/tts_text
+        queue_size: 16
+        queue_policy: backpressure
+    outputs:
+      - synth_audio
+
+  - id: playback_queue
+    path: python
+    args: ../nodes/playback/playback_queue/main.py --dora --output-source-id playback_queue --output-stream-id speaker/main --output-drain-seconds 0.2
+    inputs:
+      synth_audio:
+        source: tts_backend/synth_audio
+        queue_size: 64
+        queue_policy: backpressure
+    outputs:
+      - audio
+      - playback_state
+      - playback_done
+
+  - id: speaker_stream_adapter
+    path: python
+    args: ../nodes/playback/speaker_stream_adapter/main.py --dora --input-source-id playback_queue --input-stream-id speaker/main --output-source-id speaker_stream --output-stream-id speaker/continuous --output-drain-seconds 0.5
+    inputs:
+      audio:
+        source: playback_queue/audio
+        queue_size: 64
+        queue_policy: backpressure
+    outputs:
+      - audio
+
+  - id: dora_web_bridge
+    path: python
+    args: ../bridges/dora_web_bridge/main.py --dora --session-id session-smoke-1 --port 18083 --codex-control-url http://127.0.0.1:18183 --input transcript --input session --input dialogue --input agent_text --input agent_done --input agent_approval --input agent_tool --input tts --input playback_state --input playback_done
+    inputs:
+      transcript:
+        source: transcript_replay/transcript
+        queue_size: 16
+        queue_policy: backpressure
+      session:
+        source: dialogue_engine/session
+        queue_size: 16
+        queue_policy: backpressure
+      dialogue:
+        source: dialogue_engine/dialogue
+        queue_size: 16
+        queue_policy: backpressure
+      agent_text:
+        source: codex_app_server/agent_text
+        queue_size: 16
+        queue_policy: backpressure
+      agent_done:
+        source: codex_app_server/agent_done
+        queue_size: 16
+        queue_policy: backpressure
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+      agent_tool:
+        source: codex_app_server/agent_tool
+        queue_size: 16
+        queue_policy: backpressure
+      tts:
+        source: dialogue_engine/tts_text
+        queue_size: 16
+        queue_policy: backpressure
+      playback_state:
+        source: playback_queue/playback_state
+        queue_size: 16
+        queue_policy: backpressure
+      playback_done:
+        source: playback_queue/playback_done
+        queue_size: 16
+        queue_policy: backpressure
+
+  - id: ros2_bridge_projection
+    path: python
+    args: ../bridges/ros2_bridge/main.py --dora --jsonl-output ../artifacts/dialogue_to_cpal/ros2_projection.jsonl --required-final-input transcript --required-final-input audio
+    inputs:
+      transcript:
+        source: transcript_replay/transcript
+        queue_size: 16
+        queue_policy: backpressure
+      session:
+        source: dialogue_engine/session
+        queue_size: 16
+        queue_policy: backpressure
+      dialogue:
+        source: dialogue_engine/dialogue
+        queue_size: 16
+        queue_policy: backpressure
+      agent_text:
+        source: codex_app_server/agent_text
+        queue_size: 16
+        queue_policy: backpressure
+      agent_done:
+        source: codex_app_server/agent_done
+        queue_size: 16
+        queue_policy: backpressure
+      agent_approval:
+        source: codex_app_server/agent_approval
+        queue_size: 16
+        queue_policy: backpressure
+      agent_tool:
+        source: codex_app_server/agent_tool
+        queue_size: 16
+        queue_policy: backpressure
+      playback_state:
+        source: playback_queue/playback_state
+        queue_size: 16
+        queue_policy: backpressure
+      playback_done:
+        source: playback_queue/playback_done
+        queue_size: 16
+        queue_policy: backpressure
+      audio:
+        source: speaker_stream_adapter/audio
+        queue_size: 64
+        queue_policy: backpressure
+
+  - id: cpal_sink
+    build: ../scripts/dora_cargo_build.sh ../nodes/audio_device/cpal_sink/Cargo.toml
+    path: ../nodes/audio_device/cpal_sink/target/debug/cpal_sink
+    args: --device-id alsa:hw:CARD=APE,DEV=0 --sample-rate-hz 48000 --channels 2 --sample-format s16le --channel-layout interleaved --buffer-size-frames 480 --queue-capacity-chunks 64 --startup-buffer-chunks 4 --source-id speaker_stream --stream-id speaker/continuous --completion-timeout-ms 5000
+    inputs:
+      audio:
+        source: speaker_stream_adapter/audio
+        queue_size: 64
+        queue_policy: backpressure

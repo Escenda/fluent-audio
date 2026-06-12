@@ -19,6 +19,18 @@ class TranscriptDelta(BaseModel):
     text: NonEmptyString
 
 
+class TranscriptPartial(BaseModel):
+    """Replacement ASR hypothesis for a user turn."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    session_id: NonEmptyString
+    user_turn_id: NonEmptyString
+    stream_id: NonEmptyString
+    seq: int = Field(ge=0)
+    text: NonEmptyString
+
+
 class TranscriptFinal(BaseModel):
     """Final ASR transcript for a bounded user audio span."""
 
@@ -35,5 +47,7 @@ class TranscriptFinal(BaseModel):
     @model_validator(mode="after")
     def validate_sample_range(self) -> "TranscriptFinal":
         if self.end_sample_index <= self.start_sample_index:
-            raise ValueError("TranscriptFinal end_sample_index must be greater than start_sample_index")
+            raise ValueError(
+                "TranscriptFinal end_sample_index must be greater than start_sample_index"
+            )
         return self

@@ -1,0 +1,1729 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fluent Audio Live Topics</title>
+  <style>
+    :root {
+      --ink: #111111;
+      --gray-1: #555555;
+      --gray-2: #999999;
+      --gray-3: #d8d1c3;
+      --hairline: #e8dfce;
+      --bg: #fbf7ee;
+      --surface: rgba(255, 252, 244, 0.74);
+      --surface-strong: rgba(255, 253, 248, 0.9);
+      --paper-fiber: rgba(89, 74, 52, 0.08);
+      --paper-thread: rgba(41, 58, 67, 0.045);
+      --paper-speck: rgba(47, 43, 31, 0.08);
+      --font-sans: "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+      --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+      --t-label: 11px;
+      --t-cap: 12px;
+      --t-data: 13px;
+      --t-ui: 16px;
+      --t-conv: 20px;
+      --rail-inline-padding: 20px;
+      --scrollbar-lane: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      position: relative;
+      background:
+        radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.72), transparent 30%),
+        radial-gradient(circle at 84% 10%, rgba(228, 238, 229, 0.34), transparent 34%),
+        radial-gradient(circle at 72% 86%, rgba(231, 221, 202, 0.34), transparent 36%),
+        var(--bg);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: var(--t-ui);
+      line-height: 1.6;
+      letter-spacing: 0;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(6deg, var(--paper-fiber) 0 1px, transparent 1px 9px),
+        repeating-linear-gradient(97deg, var(--paper-thread) 0 1px, transparent 1px 12px),
+        radial-gradient(circle at 18% 28%, var(--paper-speck) 0 0.7px, transparent 0.9px),
+        radial-gradient(circle at 63% 72%, rgba(84, 82, 65, 0.06) 0 0.8px, transparent 1px),
+        radial-gradient(circle at 82% 22%, rgba(68, 85, 80, 0.05) 0 0.7px, transparent 1px);
+      background-size: auto, auto, 46px 41px, 54px 49px, 38px 43px;
+      opacity: 0.42;
+      mix-blend-mode: multiply;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+    }
+
+    header {
+      flex: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--hairline);
+      background: rgba(251, 247, 238, 0.72);
+      backdrop-filter: blur(1.5px);
+    }
+
+    .label {
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-label);
+      letter-spacing: 0.18em;
+    }
+
+    header .id {
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    header .ctrl {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex: none;
+    }
+
+    header .net {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      white-space: nowrap;
+    }
+
+    header .net .d {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ink);
+    }
+
+    header .net.off .d {
+      background: var(--bg);
+      border: 1.2px dashed var(--ink);
+    }
+
+    .ptgl {
+      display: flex;
+      gap: 4px;
+    }
+
+    .ptgl button {
+      padding: 3px 10px;
+      border: 1px solid var(--gray-3);
+      background: none;
+      color: var(--ink);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+    }
+
+    .ptgl button.off {
+      border-color: var(--hairline);
+      color: var(--gray-2);
+    }
+
+    .ptgl button:hover,
+    .ptgl button:focus-visible {
+      border-color: var(--ink);
+      outline: none;
+    }
+
+    .body {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+
+    .rail {
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      padding: 22px var(--rail-inline-padding);
+      overflow: hidden;
+      background: rgba(251, 247, 238, 0.34);
+    }
+
+    .rail-l {
+      width: 264px;
+      border-right: 1px solid var(--hairline);
+    }
+
+    .rail-r {
+      width: 264px;
+      border-left: 1px solid var(--hairline);
+      padding-right: calc(var(--rail-inline-padding) - var(--scrollbar-lane));
+    }
+
+    .rail.closed {
+      display: none;
+    }
+
+    .rhead {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .rbody {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 6px;
+      scrollbar-gutter: stable;
+    }
+
+    .rail-r .rhead {
+      padding-right: var(--scrollbar-lane);
+    }
+
+    .rail-r .rbody {
+      padding-right: var(--rail-inline-padding);
+    }
+
+    .vpipe {
+      position: relative;
+    }
+
+    .vpipe::before {
+      content: "";
+      position: absolute;
+      top: 16px;
+      bottom: 20px;
+      left: 4.5px;
+      width: 1px;
+      background: var(--gray-3);
+    }
+
+    .ps {
+      position: relative;
+      padding: 10px 0 10px 24px;
+    }
+
+    .ps:last-child::after {
+      content: "";
+      position: absolute;
+      top: 26px;
+      bottom: 0;
+      left: 0;
+      z-index: 0;
+      width: 10px;
+      background: var(--bg);
+    }
+
+    .ps .d {
+      position: absolute;
+      top: 16px;
+      left: 0;
+      z-index: 1;
+      width: 10px;
+      height: 10px;
+      border: 1.5px solid var(--gray-2);
+      border-radius: 50%;
+      background: var(--bg);
+    }
+
+    .ps.on .d {
+      border-color: var(--ink);
+      background: var(--ink);
+    }
+
+    .ps.err .d {
+      border: 1.5px dashed var(--ink);
+    }
+
+    .ps .n {
+      display: block;
+      color: var(--gray-1);
+      font-size: var(--t-data);
+      line-height: 1.5;
+    }
+
+    .ps.on .n {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .ps .v {
+      display: block;
+      margin-top: 1px;
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      overflow-wrap: anywhere;
+    }
+
+    .ps.on .v {
+      color: var(--ink);
+    }
+
+    .center {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .conv {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .conv-inner {
+      width: min(720px, 88%);
+      margin: auto auto 0;
+      padding: 16px 0 32px;
+    }
+
+    .msg {
+      margin-top: 40px;
+    }
+
+    .msg:first-child {
+      margin-top: 0;
+    }
+
+    .msg .cap {
+      margin-bottom: 8px;
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      letter-spacing: 0.12em;
+    }
+
+    .say {
+      font-size: var(--t-conv);
+      line-height: 1.85;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .msg.user .say {
+      color: var(--gray-1);
+    }
+
+    .msg.agent .say {
+      color: var(--ink);
+    }
+
+    .stream {
+      border-left: 1px solid var(--gray-3);
+      padding-left: 22px;
+    }
+
+    .stream .blk {
+      margin-top: 16px;
+    }
+
+    .stream .blk:first-child {
+      margin-top: 0;
+    }
+
+    .tool {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-data);
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .tool::before {
+      content: "⌘";
+      color: var(--gray-2);
+    }
+
+    .tool.running {
+      color: var(--ink);
+    }
+
+    .tool.err {
+      color: var(--ink);
+    }
+
+    .tool .spin {
+      width: 9px;
+      height: 9px;
+      border: 1.5px solid var(--gray-3);
+      border-top-color: var(--ink);
+      border-radius: 50%;
+      animation: rot 0.9s linear infinite;
+    }
+
+    @keyframes rot {
+      to { transform: rotate(360deg); }
+    }
+
+    .approval-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    button.approval {
+      border: 1px solid var(--gray-3);
+      background: var(--surface-strong);
+      color: var(--ink);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      padding: 4px 8px;
+    }
+
+    button.approval.primary {
+      border-color: var(--ink);
+    }
+
+    button.approval.danger {
+      border-style: dashed;
+    }
+
+    button.approval:disabled {
+      color: var(--gray-2);
+      cursor: default;
+    }
+
+    .dock {
+      flex: none;
+      width: min(720px, 88%);
+      margin: 0 auto;
+      padding-bottom: 26px;
+    }
+
+    .voice {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 36px;
+      margin-bottom: 12px;
+    }
+
+    .voice i {
+      flex: 1;
+      height: 100%;
+      border-radius: 1px;
+      background: var(--ink);
+      transform: scaleY(0.06);
+      transform-origin: center;
+      transition: transform 0.1s linear;
+    }
+
+    .input {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border: 1px solid var(--gray-3);
+      background: var(--surface);
+      padding: 14px 18px;
+    }
+
+    .input:focus-within {
+      border-color: var(--ink);
+    }
+
+    .input input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: var(--t-ui);
+    }
+
+    .input button {
+      border: none;
+      background: none;
+      color: var(--gray-2);
+      cursor: default;
+      font-family: var(--font-sans);
+      font-size: var(--t-data);
+      letter-spacing: 0.08em;
+      padding: 4px 8px;
+    }
+
+    .sum {
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      white-space: nowrap;
+    }
+
+    .ngrp {
+      min-width: 0;
+      max-width: 100%;
+      margin-top: 14px;
+      overflow: hidden;
+    }
+
+    .ngrp:first-child {
+      margin-top: 0;
+    }
+
+    .ngrp .g {
+      padding-bottom: 4px;
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-label);
+      letter-spacing: 0.14em;
+    }
+
+    .node {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      border: 0;
+      background: none;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: var(--t-data);
+      overflow: hidden;
+      padding: 5px 4px;
+      text-align: left;
+    }
+
+    .node:hover,
+    .node:focus-visible,
+    .node.sel {
+      background: rgba(255, 253, 248, 0.68);
+      outline: none;
+    }
+
+    .node.sel .nm {
+      font-weight: 700;
+    }
+
+    .node .d {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 1.2px solid var(--ink);
+      background: var(--ink);
+      flex: none;
+    }
+
+    .node.stopped .d {
+      border: 1.2px solid var(--gray-2);
+      background: var(--bg);
+    }
+
+    .node.err .d {
+      border: 1.2px dashed var(--ink);
+      background: var(--bg);
+    }
+
+    .node .nm {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .detail {
+      margin-top: 26px;
+      padding-top: 18px;
+      border-top: 1px solid var(--hairline);
+    }
+
+    .detail .d-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .kv {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--hairline);
+      font-size: var(--t-data);
+    }
+
+    .kv .v {
+      color: var(--gray-1);
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      overflow-wrap: anywhere;
+      text-align: right;
+    }
+
+    .topics {
+      display: grid;
+      gap: 3px;
+      margin-top: 4px;
+    }
+
+    button.topic {
+      width: 100%;
+      border: 0;
+      background: none;
+      color: var(--gray-1);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      padding: 4px 0;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    button.topic.active {
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .logsheet {
+      position: fixed;
+      top: 49px;
+      left: 50%;
+      z-index: 10;
+      width: min(760px, 90vw);
+      background: var(--ink);
+      color: #e8e8e8;
+      box-shadow: 0 10px 28px rgba(17, 17, 17, 0.16);
+      transform: translate(-50%, calc(-100% - 56px));
+      transition: transform 0.22s ease;
+    }
+
+    .logsheet.open {
+      transform: translate(-50%, 0);
+    }
+
+    .logsheet .l-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 18px;
+      border-bottom: 1px solid #333;
+      color: #bbbbbb;
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      letter-spacing: 0.14em;
+    }
+
+    .logsheet .x {
+      border: 0;
+      background: transparent;
+      color: #888888;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      letter-spacing: 0.08em;
+    }
+
+    .logsheet .x:hover,
+    .logsheet .x:focus-visible {
+      color: #ffffff;
+      outline: none;
+    }
+
+    .logsheet .l-body {
+      max-height: 38vh;
+      overflow: auto;
+      padding: 14px 18px;
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+      line-height: 1.75;
+      overflow-wrap: normal;
+      white-space: pre;
+    }
+
+    .node-status-grid {
+      display: grid;
+      min-width: 0;
+      max-width: 100%;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    #details {
+      display: none;
+    }
+
+    .empty {
+      color: var(--gray-2);
+      font-family: var(--font-mono);
+      font-size: var(--t-cap);
+    }
+
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--gray-3);
+    }
+
+    @media (max-width: 980px) {
+      .rail-l,
+      .rail-r {
+        width: 224px;
+      }
+
+      header {
+        padding: 12px 16px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        overflow: auto;
+      }
+
+      .page {
+        min-height: 100dvh;
+        height: auto;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .body {
+        flex-direction: column;
+      }
+
+      .rail {
+        width: 100%;
+        max-height: 34dvh;
+        border: 0;
+        border-bottom: 1px solid var(--hairline);
+      }
+
+      .center {
+        min-height: 66dvh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <div class="label">FLUENT AUDIO</div>
+        <div class="id" id="subtitle">no session</div>
+      </div>
+      <div class="ctrl">
+        <div class="net off" id="connection-wrap"><span class="d"></span><span id="connection">idle</span></div>
+        <div class="ptgl">
+          <button id="toggle-signal" type="button" title="信号レールの表示切替">◧ 信号</button>
+          <button id="toggle-nodes" type="button" title="ノードレールの表示切替">◨ ノード</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="body">
+      <aside class="rail rail-l" id="signal-rail">
+        <div class="rhead"><span class="label">パイプライン</span></div>
+        <div class="rbody">
+          <div class="vpipe" id="pipeline"></div>
+        </div>
+      </aside>
+
+      <main class="center">
+        <div class="conv" id="conversation-scroll">
+          <div class="conv-inner" id="conversation"></div>
+        </div>
+        <div class="dock">
+          <div class="voice" id="voice" title="マイク入力レベル"></div>
+          <form class="input" id="text-input-form">
+            <input id="text-input" type="text" aria-label="メッセージ入力" autocomplete="off">
+            <button id="text-send" type="submit" disabled>送信</button>
+          </form>
+        </div>
+      </main>
+
+      <aside class="rail rail-r" id="nodes-rail">
+        <div class="rhead">
+          <span class="label">ノード</span>
+          <span class="sum" id="node-summary">0/0</span>
+        </div>
+        <div class="rbody">
+          <div class="node-status-grid" id="node-status-grid"></div>
+          <div class="detail">
+            <div class="d-head">
+              <span class="label">トピック</span>
+              <span class="sum" id="topic-count">0</span>
+            </div>
+            <div class="kv"><span>セッション</span><span class="v" id="title">Voice session</span></div>
+            <div class="kv"><span>イベント</span><span class="v" id="event-count">0</span></div>
+            <div class="kv"><span>最新</span><span class="v" id="latest-event-type">none</span></div>
+            <div class="topics" id="topics"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="logsheet" id="logsheet">
+    <div class="l-head">
+      <span>LOG — <span id="node-log-title">none</span></span>
+      <button class="x" id="log-close" type="button">閉じる ✕</button>
+    </div>
+    <pre class="l-body node-log-body" id="node-log"></pre>
+  </div>
+  <pre id="details">{}</pre>
+  <script id="initial-data" type="application/json">__FLUENT_AUDIO_INITIAL_STATE__</script>
+
+  <script>
+    const topicsEl = document.getElementById("topics");
+    const topicCountEl = document.getElementById("topic-count");
+    const titleEl = document.getElementById("title");
+    const subtitleEl = document.getElementById("subtitle");
+    const eventCountEl = document.getElementById("event-count");
+    const latestEventTypeEl = document.getElementById("latest-event-type");
+    const detailsEl = document.getElementById("details");
+    const connectionEl = document.getElementById("connection");
+    const connectionWrapEl = document.getElementById("connection-wrap");
+    const pipelineEl = document.getElementById("pipeline");
+    const conversationEl = document.getElementById("conversation");
+    const conversationScrollEl = document.getElementById("conversation-scroll");
+    const voiceEl = document.getElementById("voice");
+    const textInputFormEl = document.getElementById("text-input-form");
+    const textInputEl = document.getElementById("text-input");
+    const nodeStatusGridEl = document.getElementById("node-status-grid");
+    const nodeSummaryEl = document.getElementById("node-summary");
+    const nodeLogTitleEl = document.getElementById("node-log-title");
+    const nodeLogEl = document.getElementById("node-log");
+    const logsheetEl = document.getElementById("logsheet");
+    const logCloseEl = document.getElementById("log-close");
+    const signalRailEl = document.getElementById("signal-rail");
+    const nodesRailEl = document.getElementById("nodes-rail");
+    const toggleSignalEl = document.getElementById("toggle-signal");
+    const toggleNodesEl = document.getElementById("toggle-nodes");
+
+    let bridgeSessionId = new URLSearchParams(window.location.search).get("session") || "live";
+    let selectedNodeId = null;
+    let source = null;
+    let events = [];
+    let conversationTurns = new Map();
+    let conversationOrder = [];
+    let nextEventOffset = 0;
+    let renderQueued = false;
+    let topicRefreshQueued = false;
+    let lastTopicRefreshAt = 0;
+    let latestEvents = new Map();
+    let latestTranscriptFinalText = "";
+    let latestTranscriptPartialText = "";
+    let transcriptDeltaText = "";
+    let transcriptPartialCount = 0;
+    let transcriptDeltaCount = 0;
+    let transcriptFinalCount = 0;
+    let asrPhase = "waiting";
+    let rawAgentText = "";
+    let ttsText = "";
+    let currentDisplayTurnId = null;
+    let currentAsrTurnId = null;
+    let latestNodeStatus = [];
+    const MAX_RETAINED_EVENTS = 500;
+    const MAX_CONVERSATION_TURNS = 80;
+    const MAX_TEXT_BUFFER_CHARS = 8000;
+    const CONVERSATION_BOTTOM_STICKY_PX = 48;
+    const TOPIC_REFRESH_INTERVAL_MS = 1000;
+    const NODE_STATUS_REFRESH_INTERVAL_MS = 1000;
+    let conversationPinnedToBottom = true;
+    const NODE_LOG_REFRESH_INTERVAL_MS = 1500;
+    const NODE_LOG_TAIL_LINES = 160;
+    const respondedApprovals = new Set();
+    const initialData = readInitialData();
+    const TURN_SCOPED_EVENT_TYPES = new Set([
+      "session_state",
+      "turn",
+      "asr_control",
+      "transcript_delta",
+      "transcript_partial",
+      "transcript_final",
+      "dialogue_event",
+      "agent_text_delta",
+      "agent_turn_done",
+      "approval_request",
+      "agent_user_input_request",
+      "agent_mcp_elicitation_request",
+      "tool_event",
+      "tts_text",
+      "playback_state",
+      "playback_done",
+    ]);
+    const ASR_LIVE_EVENT_TYPES = new Set([
+      "turn",
+      "asr_control",
+      "transcript_delta",
+      "transcript_partial",
+      "transcript_final",
+    ]);
+    const ASSISTANT_DISPLAY_EVENT_TYPES = new Set([
+      "session_state",
+      "dialogue_event",
+      "agent_text_delta",
+      "agent_turn_done",
+      "approval_request",
+      "agent_user_input_request",
+      "agent_mcp_elicitation_request",
+      "tool_event",
+      "tts_text",
+      "playback_state",
+      "playback_done",
+    ]);
+    const CONVERSATION_EVENT_TYPES = new Set([
+      "transcript_delta",
+      "transcript_partial",
+      "transcript_final",
+      "dialogue_event",
+      "agent_text_delta",
+      "approval_request",
+      "agent_user_input_request",
+      "agent_mcp_elicitation_request",
+      "tool_event",
+    ]);
+    const NODE_GROUPS = [
+      ["入出力", ["capture", "sink", "speaker", "pipewire", "alsa", "cpal"]],
+      ["メディア", ["media", "graph", "gstreamer"]],
+      ["知覚", ["vad", "turn", "asr", "nemotron", "transcript"]],
+      ["対話", ["dialogue", "codex", "agent", "vllm", "mcp", "approval"]],
+      ["合成", ["tts", "pyopenjtalk", "playback"]],
+      ["ブリッジ", ["web", "ros2", "bridge", "projection"]],
+    ];
+
+    function bindToggle(button, rail) {
+      button.addEventListener("click", () => {
+        const closed = rail.classList.toggle("closed");
+        button.classList.toggle("off", closed);
+      });
+    }
+
+    bindToggle(toggleSignalEl, signalRailEl);
+    bindToggle(toggleNodesEl, nodesRailEl);
+    textInputFormEl.addEventListener("submit", (event) => {
+      event.preventDefault();
+      textInputEl.value = "";
+    });
+
+    const NBARS = 56;
+    for (let index = 0; index < NBARS; index += 1) {
+      voiceEl.appendChild(document.createElement("i"));
+    }
+    const voiceBars = Array.from(voiceEl.children);
+
+    function setConnection(label) {
+      connectionEl.textContent = label;
+      connectionWrapEl.classList.toggle("off", label !== "live");
+    }
+
+    function readInitialData() {
+      const element = document.getElementById("initial-data");
+      if (!element) return null;
+      const raw = element.textContent.trim();
+      if (!raw || raw.startsWith("__FLUENT_AUDIO_INITIAL_STATE__")) return null;
+      return JSON.parse(raw);
+    }
+
+    function eventText(item) {
+      const event = item.event;
+      if (event.event_type === "asr_control") {
+        if (event.action === "start") return `start · sample ${event.start_sample_index}`;
+        if (event.action === "stop") return `stop · sample ${event.stop_sample_index}`;
+        return `cancel · ${event.reason}`;
+      }
+      if (event.event_type === "agent_user_input_request") return event.questions.join(" ");
+      if (event.event_type === "agent_mcp_elicitation_request") return event.message;
+      if (event.event_type === "tool_event") {
+        return event.error_message || event.summary || event.tool_name;
+      }
+      return event.text || event.prompt || event.message || event.state || event.status || event.event || "";
+    }
+
+    function boundedAppend(existing, addition) {
+      const value = existing + addition;
+      return value.length > MAX_TEXT_BUFFER_CHARS ? value.slice(value.length - MAX_TEXT_BUFFER_CHARS) : value;
+    }
+
+    function resetDerivedState() {
+      latestEvents = new Map();
+      currentDisplayTurnId = null;
+      latestTranscriptFinalText = "";
+      latestTranscriptPartialText = "";
+      transcriptDeltaText = "";
+      transcriptPartialCount = 0;
+      transcriptDeltaCount = 0;
+      transcriptFinalCount = 0;
+      asrPhase = "waiting";
+      rawAgentText = "";
+      ttsText = "";
+      currentAsrTurnId = null;
+      conversationTurns = new Map();
+      conversationOrder = [];
+    }
+
+    function clearAssistantDisplay() {
+      for (const eventType of ASSISTANT_DISPLAY_EVENT_TYPES) {
+        latestEvents.delete(eventType);
+      }
+      rawAgentText = "";
+      ttsText = "";
+    }
+
+    function isConversationNearBottom() {
+      const distance = conversationScrollEl.scrollHeight
+        - conversationScrollEl.clientHeight
+        - conversationScrollEl.scrollTop;
+      return distance <= CONVERSATION_BOTTOM_STICKY_PX;
+    }
+
+    function updateConversationScrollMode() {
+      conversationPinnedToBottom = isConversationNearBottom();
+    }
+
+    function eventTurnId(event) {
+      return event.user_turn_id || null;
+    }
+
+    function isCurrentDisplayTurn(event) {
+      const turnId = eventTurnId(event);
+      return !turnId || !currentDisplayTurnId || turnId === currentDisplayTurnId;
+    }
+
+    function startsAssistantDisplayTurn(event) {
+      if (event.event_type === "agent_text_delta" || event.event_type === "tts_text") return true;
+      if (event.event_type === "dialogue_event") return event.event === "agent_text" || event.event === "tts_text";
+      return false;
+    }
+
+    function switchDisplayTurnIfNeeded(event) {
+      const turnId = eventTurnId(event);
+      if (!turnId || !startsAssistantDisplayTurn(event)) return;
+      if (currentDisplayTurnId === null) {
+        currentDisplayTurnId = turnId;
+        return;
+      }
+      if (currentDisplayTurnId !== turnId) {
+        clearAssistantDisplay();
+        currentDisplayTurnId = turnId;
+      }
+    }
+
+    function isAsrDisplayTurnEvent(event) {
+      return event.event_type === "asr_control" || event.event_type.startsWith("transcript_");
+    }
+
+    function switchAsrTurnIfNeeded(event) {
+      if (!isAsrDisplayTurnEvent(event)) return;
+      const turnId = eventTurnId(event);
+      if (!turnId || currentAsrTurnId === turnId) return;
+      currentAsrTurnId = turnId;
+      latestTranscriptFinalText = "";
+      latestTranscriptPartialText = "";
+      transcriptDeltaText = "";
+      transcriptPartialCount = 0;
+      transcriptDeltaCount = 0;
+      transcriptFinalCount = 0;
+      asrPhase = "waiting";
+      latestEvents.delete("asr_control");
+      latestEvents.delete("transcript_delta");
+      latestEvents.delete("transcript_partial");
+      latestEvents.delete("transcript_final");
+    }
+
+    function applyEventItem(item) {
+      const event = item.event;
+      switchDisplayTurnIfNeeded(event);
+      switchAsrTurnIfNeeded(event);
+      applyConversationEvent(item);
+      const currentTurnEvent = isCurrentDisplayTurn(event);
+      const liveAsrEvent = ASR_LIVE_EVENT_TYPES.has(event.event_type);
+      if (currentTurnEvent || liveAsrEvent || !TURN_SCOPED_EVENT_TYPES.has(event.event_type)) {
+        latestEvents.set(event.event_type, event);
+      }
+      if (!currentTurnEvent && !liveAsrEvent) return;
+      if (event.event_type === "transcript_final") {
+        latestTranscriptFinalText = event.text || "";
+        latestTranscriptPartialText = "";
+        transcriptDeltaText = "";
+        transcriptFinalCount += 1;
+        asrPhase = "final";
+      }
+      if (event.event_type === "transcript_partial") {
+        latestTranscriptPartialText = event.text || "";
+        transcriptPartialCount += 1;
+        asrPhase = "streaming partial";
+      }
+      if (event.event_type === "transcript_delta") {
+        transcriptDeltaText = boundedAppend(transcriptDeltaText, event.text || "");
+        transcriptDeltaCount += 1;
+        asrPhase = "streaming delta";
+      }
+      if (event.event_type === "asr_control") {
+        if (event.action === "start") asrPhase = "recording";
+        if (event.action === "stop") asrPhase = "finalizing";
+        if (event.action === "cancel") asrPhase = "cancelled";
+      }
+      if (!currentTurnEvent) return;
+      if (event.event_type === "agent_text_delta") {
+        rawAgentText = boundedAppend(rawAgentText, event.text || "");
+      }
+      if (event.event_type === "tts_text") {
+        ttsText = boundedAppend(ttsText, event.text || "");
+      }
+    }
+
+    function latestEvent(eventType) {
+      return latestEvents.get(eventType) || null;
+    }
+
+    function dbfsToMeterPercent(dbfs) {
+      const clamped = Math.max(-60, Math.min(0, dbfs));
+      return Math.round(((clamped + 60) / 60) * 100);
+    }
+
+    function formatDbfs(value) {
+      if (typeof value !== "number") return "n/a";
+      return `${value.toFixed(1)} dBFS`;
+    }
+
+    function formatProbability(value) {
+      if (typeof value !== "number") return "p 0.000";
+      return `p ${value.toFixed(3)}`;
+    }
+
+    function stripThinkBlocks(text) {
+      return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    }
+
+    function extractThinkBlocks(text) {
+      const blocks = [];
+      const pattern = /<think>([\s\S]*?)<\/think>/g;
+      let match = pattern.exec(text);
+      while (match !== null) {
+        if (match[1].trim()) blocks.push(match[1].trim());
+        match = pattern.exec(text);
+      }
+      return blocks.join("\n\n");
+    }
+
+    function updateVoiceMeter(level, probability) {
+      const meterValue = level ? dbfsToMeterPercent(level.peak_dbfs) / 100 : Math.max(0, probability || 0);
+      for (let index = 0; index < voiceBars.length; index += 1) {
+        const phase = Math.sin(index * 0.61 + events.length * 0.09);
+        const shaped = Math.max(0.06, meterValue * (0.34 + Math.abs(phase) * 0.66));
+        voiceBars[index].style.transform = `scaleY(${shaped.toFixed(3)})`;
+      }
+    }
+
+    function renderPipeline() {
+      const activity = latestEvent("audio_activity");
+      const level = latestEvent("audio_level");
+      const turn = latestEvent("turn");
+      const sessionState = latestEvent("session_state");
+      const agentDone = latestEvent("agent_turn_done");
+      const playback = latestEvent("playback_state") || latestEvent("playback_done");
+      const probability = level ? level.speech_probability : activity ? activity.speech_probability : 0;
+      const ttsChunkCount = events.reduce((count, item) => count + (item.event.event_type === "tts_text" ? 1 : 0), 0);
+      const stages = [
+        {
+          name: "入力",
+          state: level || activity ? "on" : "",
+          value: level ? formatDbfs(level.peak_dbfs) : "waiting",
+        },
+        {
+          name: "発話検出",
+          state: activity && activity.state === "speech" ? "on" : "",
+          value: activity ? `${activity.state} · ${formatProbability(activity.speech_probability)}` : formatProbability(probability),
+        },
+        {
+          name: "ターン",
+          state: turn && (turn.state === "started" || turn.state === "active") ? "on" : "",
+          value: turn ? `${turn.state} · sample ${turn.sample_index}` : "waiting",
+        },
+        {
+          name: "音声認識",
+          state: asrPhase === "recording" || asrPhase === "finalizing" || asrPhase.startsWith("streaming") ? "on" : "",
+          value: `${asrPhase} · ${transcriptDeltaCount}/${transcriptPartialCount}/${transcriptFinalCount}`,
+        },
+        {
+          name: "エージェント",
+          state: agentDone && agentDone.status === "failed" ? "err" : sessionState && (sessionState.state === "thinking" || sessionState.state === "speaking") ? "on" : rawAgentText ? "on" : "",
+          value: agentDone && agentDone.status === "failed" ? "failed" : sessionState ? sessionState.state : rawAgentText ? "streaming" : "waiting",
+        },
+        {
+          name: "音声合成",
+          state: ttsText ? "on" : "",
+          value: `${ttsChunkCount} chunks`,
+        },
+        {
+          name: "再生",
+          state: playback && (playback.state === "failed" || playback.status === "failed") ? "err" : playback && (playback.state === "playing" || playback.state === "queued") ? "on" : "",
+          value: playback ? playback.state || playback.status : "waiting",
+        },
+      ];
+      pipelineEl.innerHTML = "";
+      for (const stage of stages) {
+        const row = document.createElement("div");
+        row.className = `ps ${stage.state}`.trim();
+        const dot = document.createElement("span");
+        dot.className = "d";
+        const name = document.createElement("span");
+        name.className = "n";
+        name.textContent = stage.name;
+        const value = document.createElement("span");
+        value.className = "v";
+        value.textContent = stage.value;
+        row.appendChild(dot);
+        row.appendChild(name);
+        row.appendChild(value);
+        pipelineEl.appendChild(row);
+      }
+      updateVoiceMeter(level, probability);
+    }
+
+    function turnLabel(turnId) {
+      if (!turnId) return "turn";
+      const compact = turnId.length > 18 ? `${turnId.slice(0, 18)}…` : turnId;
+      return compact;
+    }
+
+    function ensureTurn(turns, order, turnId) {
+      const key = turnId || `floating-${order.length}`;
+      if (!turns.has(key)) {
+        turns.set(key, {
+          id: key,
+          userFinal: "",
+          userLive: "",
+          agentFallback: "",
+          agentDeltaSeen: false,
+          blocks: [],
+        });
+        order.push(key);
+      }
+      return turns.get(key);
+    }
+
+    function ensureConversationTurn(turnId) {
+      const turn = ensureTurn(conversationTurns, conversationOrder, turnId);
+      pruneConversationTurns();
+      return turn;
+    }
+
+    function appendBlock(turn, kind, text, event) {
+      if (kind === "agent" && turn.blocks.length > 0) {
+        const last = turn.blocks[turn.blocks.length - 1];
+        if (last.kind === "agent") {
+          last.text += text;
+          return;
+        }
+      }
+      turn.blocks.push({ kind, text, event });
+    }
+
+    function pruneConversationTurns() {
+      while (conversationOrder.length > MAX_CONVERSATION_TURNS) {
+        const key = conversationOrder.shift();
+        conversationTurns.delete(key);
+      }
+    }
+
+    function applyConversationEvent(item) {
+      const event = item.event;
+      if (!CONVERSATION_EVENT_TYPES.has(event.event_type)) return;
+      if (event.event_type === "dialogue_event" && event.event !== "agent_text") return;
+      const turnId = event.user_turn_id || null;
+      if (!turnId && TURN_SCOPED_EVENT_TYPES.has(event.event_type)) return;
+      const turn = ensureConversationTurn(turnId);
+      if (event.event_type === "transcript_delta") {
+        turn.userLive = boundedAppend(turn.userLive, event.text || "");
+      } else if (event.event_type === "transcript_partial") {
+        turn.userLive = event.text || "";
+      } else if (event.event_type === "transcript_final") {
+        turn.userFinal = event.text || "";
+        turn.userLive = "";
+      } else if (event.event_type === "agent_text_delta") {
+        turn.agentDeltaSeen = true;
+        appendBlock(turn, "agent", event.text || "", event);
+      } else if (event.event_type === "dialogue_event" && event.event === "agent_text") {
+        turn.agentFallback = boundedAppend(turn.agentFallback, event.text || "");
+      } else if (event.event_type === "approval_request") {
+        appendBlock(turn, "approval", event.prompt, event);
+      } else if (event.event_type === "agent_user_input_request") {
+        appendBlock(turn, "tool", event.questions.join(" "), event);
+      } else if (event.event_type === "agent_mcp_elicitation_request") {
+        appendBlock(turn, "tool", event.message, event);
+      } else if (event.event_type === "tool_event") {
+        appendBlock(turn, "tool", eventText(item), event);
+      }
+    }
+
+    function buildConversationTurns() {
+      const result = [];
+      for (const key of conversationOrder) {
+        const turn = conversationTurns.get(key);
+        const blocks = turn.blocks.slice();
+        if (!turn.agentDeltaSeen && turn.agentFallback) {
+          blocks.push({ kind: "agent", text: turn.agentFallback, event: null });
+        }
+        const userText = turn.userFinal || turn.userLive;
+        if (userText || blocks.length > 0) {
+          result.push({ ...turn, blocks });
+        }
+      }
+      return result;
+    }
+
+    function renderTextBlock(text) {
+      const visibleText = stripThinkBlocks(text);
+      const thinkText = extractThinkBlocks(text);
+      const fragment = document.createDocumentFragment();
+      if (thinkText) {
+        const think = document.createElement("div");
+        think.className = "blk tool";
+        think.textContent = `think ${thinkText.length} chars`;
+        fragment.appendChild(think);
+      }
+      if (visibleText) {
+        const block = document.createElement("div");
+        block.className = "blk say";
+        block.textContent = visibleText;
+        fragment.appendChild(block);
+      }
+      return fragment;
+    }
+
+    function renderApprovalActions(event) {
+      const actions = document.createElement("div");
+      actions.className = "approval-actions";
+      const key = approvalKey(event);
+      actions.appendChild(approvalButton(event, "accept", "Allow", "primary"));
+      actions.appendChild(approvalButton(event, "decline", "Decline", "danger"));
+      actions.appendChild(approvalButton(event, "cancel", "Cancel", ""));
+      if (respondedApprovals.has(key)) {
+        for (const button of actions.querySelectorAll("button")) {
+          button.disabled = true;
+        }
+      }
+      return actions;
+    }
+
+    function renderConversation() {
+      const shouldStickToBottom = conversationPinnedToBottom || isConversationNearBottom();
+      const previousScrollTop = conversationScrollEl.scrollTop;
+      const turns = buildConversationTurns();
+      conversationEl.innerHTML = "";
+      if (turns.length === 0) {
+        conversationEl.innerHTML = '<div class="empty">standby</div>';
+        if (shouldStickToBottom) {
+          conversationScrollEl.scrollTop = conversationScrollEl.scrollHeight;
+        } else {
+          conversationScrollEl.scrollTop = previousScrollTop;
+        }
+        conversationPinnedToBottom = shouldStickToBottom && isConversationNearBottom();
+        return;
+      }
+      for (const turn of turns) {
+        const userText = turn.userFinal || turn.userLive;
+        if (userText) {
+          const message = document.createElement("div");
+          message.className = "msg user";
+          const cap = document.createElement("div");
+          cap.className = "cap";
+          cap.textContent = `あなた · ${turnLabel(turn.id)}`;
+          const say = document.createElement("div");
+          say.className = "say";
+          say.textContent = userText;
+          message.appendChild(cap);
+          message.appendChild(say);
+          conversationEl.appendChild(message);
+        }
+        if (turn.blocks.length > 0) {
+          const message = document.createElement("div");
+          message.className = "msg agent";
+          const cap = document.createElement("div");
+          cap.className = "cap";
+          cap.textContent = "エージェント";
+          const stream = document.createElement("div");
+          stream.className = "stream";
+          for (const block of turn.blocks) {
+            if (block.kind === "agent") {
+              stream.appendChild(renderTextBlock(block.text));
+            } else if (block.kind === "approval") {
+              const line = document.createElement("div");
+              line.className = "blk tool running";
+              line.textContent = `${block.event.action_label}: ${block.text}`;
+              line.appendChild(renderApprovalActions(block.event));
+              stream.appendChild(line);
+            } else {
+              const line = document.createElement("div");
+              line.className = `blk tool${block.event && block.event.event === "started" ? " running" : ""}${block.event && block.event.event === "failed" ? " err" : ""}`;
+              if (block.event && block.event.event === "started") {
+                const spinner = document.createElement("span");
+                spinner.className = "spin";
+                line.appendChild(spinner);
+              }
+              const text = document.createElement("span");
+              text.textContent = block.event && block.event.tool_name ? `${block.event.tool_name} · ${block.text}` : block.text;
+              line.appendChild(text);
+              stream.appendChild(line);
+            }
+          }
+          message.appendChild(cap);
+          message.appendChild(stream);
+          conversationEl.appendChild(message);
+        }
+      }
+      if (shouldStickToBottom) {
+        conversationScrollEl.scrollTop = conversationScrollEl.scrollHeight;
+      } else {
+        conversationScrollEl.scrollTop = Math.min(
+          previousScrollTop,
+          Math.max(0, conversationScrollEl.scrollHeight - conversationScrollEl.clientHeight),
+        );
+      }
+      conversationPinnedToBottom = shouldStickToBottom && isConversationNearBottom();
+    }
+
+    function renderNodeStatus(nodes) {
+      latestNodeStatus = nodes || [];
+      nodeStatusGridEl.innerHTML = "";
+      const runningCount = latestNodeStatus.filter((node) => node.status === "running").length;
+      nodeSummaryEl.textContent = `${runningCount}/${latestNodeStatus.length}`;
+      if (latestNodeStatus.length === 0) {
+        nodeStatusGridEl.innerHTML = '<div class="empty">no nodes</div>';
+        return;
+      }
+      const grouped = new Map();
+      for (const node of latestNodeStatus) {
+        const groupName = nodeGroupName(node.node_id);
+        if (!grouped.has(groupName)) grouped.set(groupName, []);
+        grouped.get(groupName).push(node);
+      }
+      for (const [groupName, nodesInGroup] of grouped) {
+        const group = document.createElement("div");
+        group.className = "ngrp";
+        const label = document.createElement("div");
+        label.className = "g";
+        label.textContent = groupName;
+        group.appendChild(label);
+        for (const node of nodesInGroup) {
+          const item = document.createElement("button");
+          item.type = "button";
+          const statusClass = node.status === "running" ? "running" : node.status === "stopped" ? "stopped" : "err";
+          item.className = `node ${statusClass}${node.node_id === selectedNodeId ? " sel" : ""}`;
+          item.title = node.command || "";
+          item.onclick = () => selectNodeLog(node.node_id);
+          const dot = document.createElement("span");
+          dot.className = "d";
+          const name = document.createElement("span");
+          name.className = "nm";
+          name.textContent = node.node_id;
+          item.appendChild(dot);
+          item.appendChild(name);
+          group.appendChild(item);
+        }
+        nodeStatusGridEl.appendChild(group);
+      }
+    }
+
+    function nodeGroupName(nodeId) {
+      const normalized = nodeId.toLowerCase();
+      for (const [groupName, tokens] of NODE_GROUPS) {
+        if (tokens.some((token) => normalized.includes(token))) return groupName;
+      }
+      return "その他";
+    }
+
+    function renderNodeLog(response) {
+      if (!response.available) {
+        nodeLogTitleEl.textContent = `${response.node_id} · unavailable`;
+        nodeLogEl.textContent = response.message || "Runtime log is unavailable.";
+        logsheetEl.classList.add("open");
+        return;
+      }
+      nodeLogTitleEl.textContent = `${response.node_id} · ${response.line_count}`;
+      nodeLogEl.textContent = response.lines.length > 0 ? response.lines.join("\n") : "";
+      nodeLogEl.scrollTop = nodeLogEl.scrollHeight;
+      logsheetEl.classList.add("open");
+    }
+
+    async function loadNodeLog() {
+      if (!selectedNodeId) {
+        closeLog();
+        return;
+      }
+      const response = await fetch(`/api/node-logs/${encodeURIComponent(selectedNodeId)}.json?tail=${NODE_LOG_TAIL_LINES}`);
+      if (!response.ok) throw new Error(`node log HTTP ${response.status}`);
+      renderNodeLog(await response.json());
+    }
+
+    function selectNodeLog(nodeId) {
+      if (selectedNodeId === nodeId && logsheetEl.classList.contains("open")) {
+        closeLog();
+        return;
+      }
+      selectedNodeId = nodeId;
+      renderNodeStatus(latestNodeStatus);
+      loadNodeLog().catch((error) => setConnection(error.message));
+    }
+
+    function closeLog() {
+      selectedNodeId = null;
+      logsheetEl.classList.remove("open");
+      nodeLogTitleEl.textContent = "none";
+      nodeLogEl.textContent = "";
+      renderNodeStatus(latestNodeStatus);
+    }
+
+    logCloseEl.addEventListener("click", closeLog);
+    conversationScrollEl.addEventListener("scroll", updateConversationScrollMode, { passive: true });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeLog();
+    });
+
+    async function loadNodeStatus() {
+      const response = await fetch("/api/node-status.json");
+      if (!response.ok) throw new Error(`node status HTTP ${response.status}`);
+      const data = await response.json();
+      renderNodeStatus(data.nodes || []);
+    }
+
+    function renderTopics(topics) {
+      topicCountEl.textContent = `${topics.length}`;
+      topicsEl.innerHTML = "";
+      for (const topic of topics) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `topic${topic.event_count > 0 ? " active" : ""}`;
+        button.textContent = `${topic.topic} · ${topic.event_count} · ${topic.latest_event_type || "none"}`;
+        button.onclick = () => loadTopicDetails(topic.topic).catch((error) => setConnection(error.message));
+        topicsEl.appendChild(button);
+      }
+    }
+
+    function renderEvents() {
+      const latest = events.length > 0 ? events[events.length - 1].event : null;
+      titleEl.textContent = bridgeSessionId || "Voice session";
+      subtitleEl.textContent = bridgeSessionId || "no session";
+      eventCountEl.textContent = nextEventOffset > events.length ? `${nextEventOffset} · tail ${events.length}` : `${events.length}`;
+      latestEventTypeEl.textContent = latest ? latest.event_type : "none";
+      detailsEl.textContent = latest ? JSON.stringify(events[events.length - 1], null, 2) : "{}";
+      renderPipeline();
+      renderConversation();
+    }
+
+    function shouldKeepTimelineEvent(item) {
+      const event = item.event;
+      if (event.event_type === "audio_level") return false;
+      if (event.event_type !== "audio_activity" && event.event_type !== "turn") return true;
+      const previous = events.length > 0 ? events[events.length - 1].event : null;
+      if (!previous || previous.event_type !== event.event_type) return true;
+      if (event.event_type === "audio_activity") return previous.state !== event.state;
+      return previous.session_id !== event.session_id ||
+        previous.user_turn_id !== event.user_turn_id ||
+        previous.stream_id !== event.stream_id ||
+        previous.state !== event.state;
+    }
+
+    function appendTimelineEvent(item) {
+      if (!shouldKeepTimelineEvent(item)) return;
+      events.push(item);
+      if (events.length > MAX_RETAINED_EVENTS) {
+        events = events.slice(events.length - MAX_RETAINED_EVENTS);
+      }
+    }
+
+    function scheduleRender() {
+      if (renderQueued) return;
+      renderQueued = true;
+      requestAnimationFrame(() => {
+        renderQueued = false;
+        renderEvents();
+      });
+    }
+
+    function scheduleTopicRefresh() {
+      if (topicRefreshQueued) return;
+      const now = Date.now();
+      const delay = Math.max(0, TOPIC_REFRESH_INTERVAL_MS - (now - lastTopicRefreshAt));
+      topicRefreshQueued = true;
+      setTimeout(() => {
+        topicRefreshQueued = false;
+        lastTopicRefreshAt = Date.now();
+        loadTopics().catch(() => setConnection("topic list error"));
+      }, delay);
+    }
+
+    function approvalButton(event, decision, label, variant) {
+      const button = document.createElement("button");
+      button.className = `approval ${variant}`.trim();
+      button.textContent = label;
+      button.onclick = () => submitApproval(event, decision).catch((error) => setConnection(error.message));
+      return button;
+    }
+
+    function approvalKey(event) {
+      return `${event.session_id}\n${event.user_turn_id}\n${event.approval_id}`;
+    }
+
+    async function submitApproval(event, decision) {
+      const url = `/api/agent-approvals/${encodeURIComponent(event.session_id)}/user-turns/${encodeURIComponent(event.user_turn_id)}/approval-requests/${encodeURIComponent(event.approval_id)}/responses`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ decision, scope: "turn" }),
+      });
+      if (!response.ok) throw new Error(`approval HTTP ${response.status}`);
+      respondedApprovals.add(approvalKey(event));
+      setConnection(`approval ${decision}`);
+      renderEvents();
+    }
+
+    async function loadTopics() {
+      const response = await fetch("/api/topics");
+      if (!response.ok) throw new Error(`topic list HTTP ${response.status}`);
+      const body = await response.json();
+      renderTopics(body.topics || []);
+    }
+
+    function applySnapshotBody(body) {
+      events = [];
+      nextEventOffset = body.event_count;
+      resetDerivedState();
+      for (const item of body.events) {
+        applyEventItem(item);
+        appendTimelineEvent(item);
+      }
+      respondedApprovals.clear();
+      renderEvents();
+    }
+
+    async function loadSnapshot() {
+      const response = await fetch(`/api/events.json?tail=${MAX_RETAINED_EVENTS}`);
+      if (!response.ok) throw new Error(`snapshot HTTP ${response.status}`);
+      applySnapshotBody(await response.json());
+    }
+
+    function applyInitialData() {
+      if (!initialData) return false;
+      applySnapshotBody(initialData.snapshot);
+      renderTopics(initialData.topics.topics || []);
+      return true;
+    }
+
+    function openStream() {
+      if (source) source.close();
+      source = new EventSource(`/api/events.sse?after=${nextEventOffset}`);
+      source.onopen = () => setConnection("live");
+      source.onerror = () => setConnection("reconnecting");
+      source.addEventListener("dora-topic-event", (message) => {
+        const item = JSON.parse(message.data);
+        nextEventOffset = item.global_offset + 1;
+        applyEventItem(item);
+        appendTimelineEvent(item);
+        scheduleRender();
+        scheduleTopicRefresh();
+      });
+    }
+
+    async function connectBridgeSession() {
+      history.replaceState(null, "", `/?session=${encodeURIComponent(bridgeSessionId)}`);
+      await loadSnapshot();
+      await loadTopics();
+      openStream();
+    }
+
+    async function loadTopicDetails(topic) {
+      const response = await fetch(`/api/topics/${encodeURIComponent(topic)}/events.json?tail=80`);
+      if (!response.ok) throw new Error(`topic snapshot HTTP ${response.status}`);
+      detailsEl.textContent = JSON.stringify(await response.json(), null, 2);
+    }
+
+    async function tick() {
+      if (bridgeSessionId && !source) {
+        try {
+          await connectBridgeSession();
+        } catch (error) {
+          setConnection(error.message);
+        }
+      }
+      try {
+        await loadTopics();
+      } catch (error) {
+        setConnection(error.message);
+      }
+      try {
+        await loadNodeStatus();
+      } catch (error) {
+        setConnection(error.message);
+      }
+    }
+
+    if (!applyInitialData()) renderEvents();
+    tick();
+    setInterval(tick, 2000);
+    setInterval(() => {
+      loadNodeStatus().catch((error) => setConnection(error.message));
+    }, NODE_STATUS_REFRESH_INTERVAL_MS);
+    setInterval(() => {
+      if (selectedNodeId) {
+        loadNodeLog().catch((error) => setConnection(error.message));
+      }
+    }, NODE_LOG_REFRESH_INTERVAL_MS);
+  </script>
+</body>
+</html>

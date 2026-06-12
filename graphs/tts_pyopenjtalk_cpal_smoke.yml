@@ -1,0 +1,62 @@
+nodes:
+  - id: tts_text_replay
+    path: python
+    args: ../tests/fixtures/dora/tts_text_replay.py --dora --request-id tts-cpal-smoke --session-id tts-cpal-session --user-turn-id user-turn-tts-cpal --assistant-turn-id assistant-turn-tts-cpal --text "こんにちは。音声再生テストです。"
+    outputs:
+      - tts_text
+
+  - id: tts_backend
+    path: python
+    args: ../nodes/tts/tts_backend/main.py --dora --endpoint-url http://127.0.0.1:18097/synthesize --timeout-seconds 30 --output-drain-seconds 0.5
+    inputs:
+      tts_text:
+        source: tts_text_replay/tts_text
+        queue_size: 16
+        queue_policy: backpressure
+    outputs:
+      - synth_audio
+
+  - id: playback_queue
+    path: python
+    args: ../nodes/playback/playback_queue/main.py --dora --output-source-id playback_queue --output-stream-id speaker/main --output-drain-seconds 0.5
+    inputs:
+      synth_audio:
+        source: tts_backend/synth_audio
+        queue_size: 64
+        queue_policy: backpressure
+    outputs:
+      - audio
+      - playback_state
+      - playback_done
+
+  - id: speaker_stream_adapter
+    path: python
+    args: ../nodes/playback/speaker_stream_adapter/main.py --dora --input-source-id playback_queue --input-stream-id speaker/main --output-source-id speaker_stream --output-stream-id speaker/continuous --output-drain-seconds 0.5
+    inputs:
+      audio:
+        source: playback_queue/audio
+        queue_size: 64
+        queue_policy: backpressure
+    outputs:
+      - audio
+
+  - id: media_graph_speaker
+    path: python
+    args: ../nodes/media_graph/main.py --dora --input-source-id speaker_stream --input-stream-id speaker/continuous --input-sample-rate-hz 48000 --input-channels 1 --input-sample-format f32le --input-channel-layout interleaved --output-source-id speaker_media_graph --output-stream-id speaker/cpal --output-sample-rate-hz 48000 --output-channels 2 --output-sample-format s16le --output-channel-layout interleaved --output-start-seq 0 --output-start-sample-index 0 --output-start-capture-time-ns 0
+    inputs:
+      audio:
+        source: speaker_stream_adapter/audio
+        queue_size: 64
+        queue_policy: backpressure
+    outputs:
+      - audio
+
+  - id: cpal_sink
+    build: ../scripts/dora_cargo_build.sh ../nodes/audio_device/cpal_sink/Cargo.toml
+    path: ../nodes/audio_device/cpal_sink/target/debug/cpal_sink
+    args: --device-id alsa:hw:CARD=APE,DEV=0 --sample-rate-hz 48000 --channels 2 --sample-format s16le --channel-layout interleaved --buffer-size-frames 480 --queue-capacity-chunks 128 --startup-buffer-chunks 2 --source-id speaker_media_graph --stream-id speaker/cpal --completion-timeout-ms 30000
+    inputs:
+      audio:
+        source: media_graph_speaker/audio
+        queue_size: 128
+        queue_policy: backpressure

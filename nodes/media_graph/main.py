@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from fluent_audio.contracts import AudioChunk, AudioFormat, require_contiguous_audio_chunks
 from fluent_audio.dora import (
-    DoraAudioMetadata,
+    DoraAudioFinalMarker,
     decode_audio_chunk_from_dora,
     encode_audio_chunk_for_dora,
     encode_audio_final_marker_for_dora,
@@ -60,6 +60,7 @@ class MediaGraphConfig(BaseModel):
     tap_start_seq: int = Field(default=0, ge=0)
     tap_start_sample_index: int = Field(default=0, ge=0)
     tap_start_capture_time_ns: int = Field(default=0, ge=0)
+    linear_gain: float = Field(default=1.0, gt=0.0, le=10.0)
     pull_timeout_ms: int = Field(default=1_000, gt=0)
 
     @model_validator(mode="after")
@@ -113,30 +114,30 @@ class InputStreamState:
         self.previous_chunk = chunk
         self.chunks_seen += 1
 
-    def accept_final(self, metadata: DoraAudioMetadata) -> None:
+    def accept_final(self, marker: DoraAudioFinalMarker) -> None:
         if self.previous_chunk is None:
             raise MediaGraphInputError("Media graph received final marker before audio chunks")
-        if metadata.source_id != self.config.input_source_id:
+        if marker.source_id != self.config.input_source_id:
             raise MediaGraphInputError(
                 "Media graph final source mismatch: "
-                f"expected {self.config.input_source_id!r}, got {metadata.source_id!r}"
+                f"expected {self.config.input_source_id!r}, got {marker.source_id!r}"
             )
-        if metadata.stream_id != self.config.input_stream_id:
+        if marker.stream_id != self.config.input_stream_id:
             raise MediaGraphInputError(
                 "Media graph final stream mismatch: "
-                f"expected {self.config.input_stream_id!r}, got {metadata.stream_id!r}"
+                f"expected {self.config.input_stream_id!r}, got {marker.stream_id!r}"
             )
-        if metadata.to_audio_format() != self.config.input_format:
+        if marker.to_audio_format() != self.config.input_format:
             raise MediaGraphInputError("Media graph final format mismatch")
-        if metadata.seq != self.previous_chunk.next_seq:
+        if marker.seq != self.previous_chunk.next_seq:
             raise MediaGraphInputError(
                 "Media graph final seq mismatch: "
-                f"expected {self.previous_chunk.next_seq}, got {metadata.seq}"
+                f"expected {self.previous_chunk.next_seq}, got {marker.seq}"
             )
-        if metadata.sample_index != self.previous_chunk.next_sample_index:
+        if marker.sample_index != self.previous_chunk.next_sample_index:
             raise MediaGraphInputError(
                 "Media graph final sample_index mismatch: "
-                f"expected {self.previous_chunk.next_sample_index}, got {metadata.sample_index}"
+                f"expected {self.previous_chunk.next_sample_index}, got {marker.sample_index}"
             )
 
 
@@ -377,6 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tap-start-seq", type=int, default=0)
     parser.add_argument("--tap-start-sample-index", type=int, default=0)
     parser.add_argument("--tap-start-capture-time-ns", type=int, default=0)
+    parser.add_argument("--linear-gain", type=float, default=1.0)
     parser.add_argument("--pull-timeout-ms", type=int, default=1_000)
     return parser
 
@@ -420,6 +422,7 @@ def config_from_args(args: argparse.Namespace) -> MediaGraphConfig:
         tap_start_seq=args.tap_start_seq,
         tap_start_sample_index=args.tap_start_sample_index,
         tap_start_capture_time_ns=args.tap_start_capture_time_ns,
+        linear_gain=args.linear_gain,
         pull_timeout_ms=args.pull_timeout_ms,
     )
 
@@ -469,8 +472,8 @@ def run_media_graph_events(
             payload = event.get("value")
             metadata = validate_dora_audio_metadata(event.get("metadata"))
             if metadata.final:
-                validate_dora_audio_final_marker(payload, metadata)
-                input_state.accept_final(metadata)
+                final_marker = validate_dora_audio_final_marker(payload, metadata)
+                input_state.accept_final(final_marker)
                 if graph is None:
                     raise MediaGraphInputError(
                         "Media graph received final marker before graph start"
@@ -506,7 +509,9 @@ def run_media_graph_events(
 def build_pipeline_description(config: MediaGraphConfig) -> str:
     appsrc = "appsrc name=audio_src is-live=false format=time block=true do-timestamp=false"
     processing = (
-        "! capsfilter name=input_caps ! audioconvert ! audioresample ! capsfilter name=output_caps"
+        "! capsfilter name=input_caps ! audioconvert "
+        f"! volume name=audio_gain volume={config.linear_gain:g} "
+        "! audioresample ! capsfilter name=output_caps"
     )
     appsink = "appsink name=audio_sink emit-signals=false sync=false async=false wait-on-eos=false"
     if not config.enable_tap:

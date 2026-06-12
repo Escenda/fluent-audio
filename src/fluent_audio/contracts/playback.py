@@ -58,6 +58,8 @@ class PlaybackDone(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     request_id: NonEmptyString
+    session_id: NonEmptyString
+    user_turn_id: NonEmptyString
     stream_id: NonEmptyString
     status: PlaybackDoneStatus
     final_sequence: int | None = Field(default=None, ge=0)
@@ -81,6 +83,8 @@ class PlaybackState(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     request_id: NonEmptyString
+    session_id: NonEmptyString
+    user_turn_id: NonEmptyString
     stream_id: NonEmptyString
     state: PlaybackStateKind
     seq: int = Field(ge=0)

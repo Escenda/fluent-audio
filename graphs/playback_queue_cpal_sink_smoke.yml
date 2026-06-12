@@ -1,0 +1,29 @@
+nodes:
+  - id: synth_audio_replay
+    path: python
+    args: ../nodes/tts/synth_audio_replay/main.py --dora --input ../tests/fixtures/cpal/silence_48k_stereo_250ms.s16le --sample-rate-hz 48000 --channels 2 --sample-format s16le --channel-layout interleaved --chunk-frames 480 --request-id tts-smoke-1 --session-id session-smoke-1 --user-turn-id user-turn-smoke-1 --assistant-turn-id assistant-turn-smoke-1 --audio-source-id tts_replay --audio-stream-id tts/replay/smoke --start-capture-time-ns 0
+    outputs:
+      - synth_audio
+
+  - id: playback_queue
+    path: python
+    args: ../nodes/playback/playback_queue/main.py --dora --output-source-id playback_queue --output-stream-id speaker/main --output-drain-seconds 0.2
+    inputs:
+      synth_audio:
+        source: synth_audio_replay/synth_audio
+        queue_size: 64
+        queue_policy: backpressure
+    outputs:
+      - audio
+      - playback_state
+      - playback_done
+
+  - id: cpal_sink
+    build: ../scripts/dora_cargo_build.sh ../nodes/audio_device/cpal_sink/Cargo.toml
+    path: ../nodes/audio_device/cpal_sink/target/debug/cpal_sink
+    args: --device-id alsa:hw:CARD=APE,DEV=0 --sample-rate-hz 48000 --channels 2 --sample-format s16le --channel-layout interleaved --buffer-size-frames 480 --queue-capacity-chunks 64 --startup-buffer-chunks 4 --source-id playback_queue --stream-id speaker/main --completion-timeout-ms 5000
+    inputs:
+      audio:
+        source: playback_queue/audio
+        queue_size: 64
+        queue_policy: backpressure

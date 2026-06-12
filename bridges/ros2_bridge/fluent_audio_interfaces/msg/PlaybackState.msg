@@ -1,0 +1,9 @@
+std_msgs/Header header
+string request_id
+string session_id
+string user_turn_id
+string stream_id
+string state
+uint64 seq
+uint64 played_frames
+string reason

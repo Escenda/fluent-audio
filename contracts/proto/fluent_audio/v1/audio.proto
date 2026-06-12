@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package fluent_audio.v1;
+
+enum SampleFormat {
+  SAMPLE_FORMAT_UNSPECIFIED = 0;
+  SAMPLE_FORMAT_S16LE = 1;
+  SAMPLE_FORMAT_F32LE = 2;
+}
+
+enum ChannelLayout {
+  CHANNEL_LAYOUT_UNSPECIFIED = 0;
+  CHANNEL_LAYOUT_INTERLEAVED = 1;
+}
+
+message AudioFormat {
+  uint32 sample_rate_hz = 1;
+  uint32 channels = 2;
+  SampleFormat sample_format = 3;
+  ChannelLayout channel_layout = 4;
+}
+
+message AudioFrame {
+  string source_id = 1;
+  string stream_id = 2;
+  uint64 seq = 3;
+  uint64 sample_index = 4;
+  uint64 capture_time_ns = 5;
+  uint32 frame_count = 6;
+  AudioFormat format = 7;
+  bytes payload = 8;
+}
+
+message AudioStreamFinal {
+  string source_id = 1;
+  string stream_id = 2;
+  uint64 seq = 3;
+  uint64 sample_index = 4;
+  uint64 capture_time_ns = 5;
+  AudioFormat format = 6;
+}
