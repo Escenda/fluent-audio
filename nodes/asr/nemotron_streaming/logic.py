@@ -14,7 +14,6 @@ from fluent_audio.contracts import (
     AudioChunk,
     AudioChunkContinuityError,
     AudioFormat,
-    TranscriptDelta,
     TranscriptFinal,
     TranscriptPartial,
     require_contiguous_audio_chunks,
@@ -33,7 +32,6 @@ class AsrBackendPushResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     partial_texts: tuple[NonEmptyString, ...] = ()
-    delta_texts: tuple[NonEmptyString, ...] = ()
 
 
 class AsrBackendFinalResult(BaseModel):
@@ -229,7 +227,7 @@ class NemotronStreamingRuntime:
     def push_audio(
         self,
         chunk: AudioChunk,
-    ) -> list[TranscriptDelta | TranscriptFinal | TranscriptPartial]:
+    ) -> list[TranscriptFinal | TranscriptPartial]:
         self._validate_audio_chunk_identity_and_format(chunk)
         self._handle_audio_continuity(chunk)
         self._history.append(chunk)
@@ -241,7 +239,7 @@ class NemotronStreamingRuntime:
     def push_control(
         self,
         control: AsrStart | AsrStop | AsrCancel,
-    ) -> list[TranscriptDelta | TranscriptFinal | TranscriptPartial]:
+    ) -> list[TranscriptFinal | TranscriptPartial]:
         self._validate_control(control)
         if self._should_queue_control(control):
             self._pending_controls.append(control)
@@ -254,7 +252,7 @@ class NemotronStreamingRuntime:
     def _apply_control(
         self,
         control: AsrStart | AsrStop | AsrCancel,
-    ) -> list[TranscriptDelta | TranscriptFinal | TranscriptPartial]:
+    ) -> list[TranscriptFinal | TranscriptPartial]:
         if isinstance(control, AsrStart):
             return self._start_turn(control)
         if isinstance(control, AsrStop):
@@ -277,8 +275,8 @@ class NemotronStreamingRuntime:
 
     def _drain_pending_controls(
         self,
-    ) -> list[TranscriptDelta | TranscriptFinal | TranscriptPartial]:
-        transcript_events: list[TranscriptDelta | TranscriptFinal | TranscriptPartial] = []
+    ) -> list[TranscriptFinal | TranscriptPartial]:
+        transcript_events: list[TranscriptFinal | TranscriptPartial] = []
         while self._pending_controls:
             next_control = self._pending_controls[0]
             if self._active_turn is not None and isinstance(next_control, AsrStart):
@@ -303,7 +301,7 @@ class NemotronStreamingRuntime:
                 "ASR audio stream finished while controls are still pending"
             )
 
-    def _start_turn(self, control: AsrStart) -> list[TranscriptDelta | TranscriptPartial]:
+    def _start_turn(self, control: AsrStart) -> list[TranscriptPartial]:
         if self._active_turn is not None:
             raise NemotronStreamingError("ASR start received while another turn is active")
 
@@ -330,7 +328,7 @@ class NemotronStreamingRuntime:
     def _stop_turn(
         self,
         control: AsrStop,
-    ) -> list[TranscriptDelta | TranscriptFinal | TranscriptPartial]:
+    ) -> list[TranscriptFinal | TranscriptPartial]:
         active_turn = self._require_active_turn(control.session_id, control.user_turn_id)
         if active_turn.pending_stop is not None:
             raise NemotronStreamingError("ASR stop received while another stop is pending")
@@ -370,7 +368,7 @@ class NemotronStreamingRuntime:
                 active_turn.next_sample_index,
                 control.stop_sample_index,
             )
-            transcript_events: list[TranscriptDelta | TranscriptFinal | TranscriptPartial] = []
+            transcript_events: list[TranscriptFinal | TranscriptPartial] = []
             for chunk in replay_chunks:
                 transcript_events.extend(self._push_backend_audio(chunk))
             final_event = self._finalize_active_turn(control)
@@ -384,7 +382,7 @@ class NemotronStreamingRuntime:
     def _cancel_turn(
         self,
         control: AsrCancel,
-    ) -> list[TranscriptDelta | TranscriptFinal | TranscriptPartial]:
+    ) -> list[TranscriptFinal | TranscriptPartial]:
         self._require_active_turn(control.session_id, control.user_turn_id)
         self._backend.cancel(control)
         self._active_turn = None
@@ -392,7 +390,7 @@ class NemotronStreamingRuntime:
 
     def _push_available_active_audio(
         self,
-    ) -> list[TranscriptDelta | TranscriptFinal | TranscriptPartial]:
+    ) -> list[TranscriptFinal | TranscriptPartial]:
         active_turn = self._active_turn
         if active_turn is None:
             return []
@@ -414,7 +412,7 @@ class NemotronStreamingRuntime:
         if target_end_sample_index <= active_turn.next_sample_index:
             return []
 
-        transcript_events: list[TranscriptDelta | TranscriptFinal | TranscriptPartial] = []
+        transcript_events: list[TranscriptFinal | TranscriptPartial] = []
         chunks_to_push = self._history.span(
             active_turn.next_sample_index,
             target_end_sample_index,
@@ -431,7 +429,7 @@ class NemotronStreamingRuntime:
                 transcript_events.extend(self._drain_pending_controls())
         return transcript_events
 
-    def _push_backend_audio(self, chunk: AudioChunk) -> list[TranscriptDelta | TranscriptPartial]:
+    def _push_backend_audio(self, chunk: AudioChunk) -> list[TranscriptPartial]:
         active_turn = self._active_turn
         if active_turn is None:
             raise NemotronStreamingError("Cannot push ASR audio without active turn")
@@ -439,21 +437,10 @@ class NemotronStreamingRuntime:
         self._active_turn = active_turn.model_copy(
             update={"next_sample_index": chunk.next_sample_index}
         )
-        transcript_events: list[TranscriptDelta | TranscriptPartial] = []
+        transcript_events: list[TranscriptPartial] = []
         for text in result.partial_texts:
             transcript_events.append(
                 TranscriptPartial(
-                    session_id=active_turn.session_id,
-                    user_turn_id=active_turn.user_turn_id,
-                    stream_id=self._config.output_stream_id,
-                    seq=self._next_transcript_seq,
-                    text=text,
-                )
-            )
-            self._next_transcript_seq += 1
-        for text in result.delta_texts:
-            transcript_events.append(
-                TranscriptDelta(
                     session_id=active_turn.session_id,
                     user_turn_id=active_turn.user_turn_id,
                     stream_id=self._config.output_stream_id,

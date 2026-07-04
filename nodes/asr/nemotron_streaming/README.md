@@ -10,8 +10,8 @@ backend, and target-hardware DORA smoke are implemented and verified with
 `nvidia/nemotron-3.5-asr-streaming-0.6b`.
 
 The current representative DORA smoke verifies non-empty `TranscriptFinal` delivery.
-It does not prove low-latency transcript delta behavior because the short fixture emitted
-zero deltas before the final transcript.
+Live hypotheses are emitted as replacement `TranscriptPartial` events when the backend
+returns them.
 
 ## DORA ids
 
@@ -22,12 +22,12 @@ Inputs:
 
 Output:
 
-- `transcript`: typed `TranscriptDelta`, `TranscriptFinal`, and transcript stream final marker
+- `transcript`: typed `TranscriptPartial`, `TranscriptFinal`, and transcript stream final marker
 
 ## Stream id convention
 
 `AsrControl.stream_id` identifies the input audio stream that should be transcribed.
-`TranscriptDelta.stream_id` and `TranscriptFinal.stream_id` use this node's configured
+`TranscriptPartial.stream_id` and `TranscriptFinal.stream_id` use this node's configured
 output transcript stream id.
 
 Downstream nodes must correlate transcript events by `session_id` and `user_turn_id`,
@@ -56,6 +56,7 @@ The node currently:
 - validates explicit NeMo backend settings through `--backend nemo`
 - loads the NeMo cache-aware RNNT model from either a local `.nemo` file or a model name
 - buffers one bounded user turn for the NeMo backend and runs the cache-aware ASR path at stop
+- emits live NeMo hypotheses as replacement `TranscriptPartial` events
 - emits a non-empty `TranscriptFinal` at turn stop when ASR recognizes text
 - consumes empty final backend results as explicit no-transcript turns without
   emitting `TranscriptFinal`
@@ -84,12 +85,7 @@ corresponding to 80 ms, 160 ms, 320 ms, 560 ms, and 1120 ms chunk settings.
 
 - production model cache policy for `--model-name` when a Hugging Face id is used
 - latency/throughput measurement under expected microphone chunk sizes
-- a longer or live-input fixture that proves low-latency `TranscriptDelta` behavior
-- backend work to make true live deltas reliable with Nemotron's cache-aware streaming path
-
-The current Nemotron backend intentionally emits final transcripts only. Direct tiny-chunk
-`append_audio()` attempts produced unstable hypotheses on the smoke fixture; live delta support
-must be reintroduced only after the backend can emit append-only deltas without rewrites.
+- a longer or live-input fixture that proves low-latency `TranscriptPartial` behavior
 
 ## Verification
 

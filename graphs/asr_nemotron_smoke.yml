@@ -67,7 +67,7 @@ nodes:
 
   - id: transcript_probe
     path: python
-    args: ../nodes/asr/nemotron_streaming/transcript_probe.py --dora --session-id session-smoke --stream-id transcript/session-smoke --expected-min-deltas 0 --expected-finals 1 --expected-final-sample-index 32768 --expected-last-text-compact Thestales
+    args: ../nodes/asr/nemotron_streaming/transcript_probe.py --dora --session-id session-smoke --stream-id transcript/session-smoke --expected-min-partials 0 --expected-finals 1 --expected-final-sample-index 32768 --expected-last-text-compact Thestales
     inputs:
       transcript:
         source: nemotron_streaming/transcript

@@ -1,9 +1,9 @@
 import pytest
 
-from fluent_audio.contracts import TranscriptDelta, TranscriptFinal
+from fluent_audio.contracts import TranscriptFinal, TranscriptPartial
 from fluent_audio.dora import (
-    encode_transcript_delta_for_dora,
     encode_transcript_final_for_dora,
+    encode_transcript_partial_for_dora,
     encode_transcript_stream_final_marker_for_dora,
 )
 from nodes.asr.nemotron_streaming.transcript_probe import (
@@ -21,8 +21,8 @@ class FakeDoraNode:
         return iter(self._events)
 
 
-def _dora_delta(delta: TranscriptDelta):
-    payload, metadata = encode_transcript_delta_for_dora(delta)
+def _dora_partial(partial: TranscriptPartial):
+    payload, metadata = encode_transcript_partial_for_dora(partial)
     return {
         "type": "INPUT",
         "id": "transcript",
@@ -56,11 +56,11 @@ def _dora_stream_final(*, seq: int, sample_index: int):
     }
 
 
-def test_transcript_probe_accepts_delta_final_and_stream_final() -> None:
+def test_transcript_probe_accepts_partial_final_and_stream_final() -> None:
     fake_node = FakeDoraNode(
         [
-            _dora_delta(
-                TranscriptDelta(
+            _dora_partial(
+                TranscriptPartial(
                     session_id="session-1",
                     user_turn_id="turn-1",
                     stream_id="transcript/main",
@@ -90,13 +90,13 @@ def test_transcript_probe_accepts_delta_final_and_stream_final() -> None:
     )
     validate_summary(
         summary,
-        expected_min_deltas=1,
+        expected_min_partials=1,
         expected_finals=1,
         expected_final_sample_index=16000,
         expected_last_text_compact="helloworld",
     )
 
-    assert summary.deltas == 1
+    assert summary.partials == 1
     assert summary.finals == 1
     assert summary.last_text == "hello world"
 
@@ -127,7 +127,7 @@ def test_transcript_probe_rejects_expected_last_text_mismatch() -> None:
     with pytest.raises(TranscriptProbeError, match="final text mismatch"):
         validate_summary(
             summary,
-            expected_min_deltas=0,
+            expected_min_partials=0,
             expected_finals=1,
             expected_final_sample_index=16000,
             expected_last_text="different",
@@ -160,7 +160,7 @@ def test_transcript_probe_rejects_short_last_text() -> None:
     with pytest.raises(TranscriptProbeError, match="text length"):
         validate_summary(
             summary,
-            expected_min_deltas=0,
+            expected_min_partials=0,
             expected_finals=1,
             expected_final_sample_index=16000,
             expected_min_last_text_length=3,
@@ -170,8 +170,8 @@ def test_transcript_probe_rejects_short_last_text() -> None:
 def test_transcript_probe_rejects_seq_gap() -> None:
     fake_node = FakeDoraNode(
         [
-            _dora_delta(
-                TranscriptDelta(
+            _dora_partial(
+                TranscriptPartial(
                     session_id="session-1",
                     user_turn_id="turn-1",
                     stream_id="transcript/main",

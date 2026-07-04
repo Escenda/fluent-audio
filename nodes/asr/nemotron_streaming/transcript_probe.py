@@ -14,10 +14,10 @@ if str(_REPO_ROOT) not in sys.path:
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import TranscriptDelta, TranscriptFinal
+from fluent_audio.contracts import TranscriptFinal, TranscriptPartial
 from fluent_audio.dora import (
-    decode_transcript_delta_from_dora,
     decode_transcript_final_from_dora,
+    decode_transcript_partial_from_dora,
     validate_dora_transcript_metadata,
     validate_dora_transcript_stream_final_marker,
 )
@@ -32,7 +32,7 @@ class TranscriptProbeSummary(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
-    deltas: int = Field(ge=0)
+    partials: int = Field(ge=0)
     finals: int = Field(ge=0)
     final_seen: bool
     final_sample_index: int = Field(ge=0)
@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dora", action="store_true")
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--stream-id", required=True)
-    parser.add_argument("--expected-min-deltas", required=True, type=int)
+    parser.add_argument("--expected-min-partials", required=True, type=int)
     parser.add_argument("--expected-finals", required=True, type=int)
     parser.add_argument("--expected-final-sample-index", required=True, type=int)
     parser.add_argument("--expected-last-text", default="")
@@ -68,7 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     validate_summary(
         summary,
-        expected_min_deltas=args.expected_min_deltas,
+        expected_min_partials=args.expected_min_partials,
         expected_finals=args.expected_finals,
         expected_final_sample_index=args.expected_final_sample_index,
         expected_last_text=args.expected_last_text,
@@ -86,7 +86,7 @@ def run_transcript_probe_dora(
     session_id: str,
     stream_id: str,
 ) -> TranscriptProbeSummary:
-    deltas = 0
+    partials = 0
     finals = 0
     previous_seq: int | None = None
     last_text = ""
@@ -125,15 +125,15 @@ def run_transcript_probe_dora(
                     f"expected {stream_id!r}, got {final_marker.stream_id!r}"
                 )
             return TranscriptProbeSummary(
-                deltas=deltas,
+                partials=partials,
                 finals=finals,
                 final_seen=True,
                 final_sample_index=final_marker.start_sample_index,
                 last_text=last_text,
             )
 
-        if metadata.kind == "delta":
-            transcript = decode_transcript_delta_from_dora(payload, metadata)
+        if metadata.kind == "partial":
+            transcript = decode_transcript_partial_from_dora(payload, metadata)
             _validate_transcript_event(
                 transcript,
                 session_id=session_id,
@@ -141,8 +141,8 @@ def run_transcript_probe_dora(
                 previous_seq=previous_seq,
             )
             previous_seq = transcript.seq
-            deltas += 1
-            last_text += transcript.text
+            partials += 1
+            last_text = transcript.text
             continue
 
         transcript = decode_transcript_final_from_dora(payload, metadata)
@@ -162,17 +162,17 @@ def run_transcript_probe_dora(
 def validate_summary(
     summary: TranscriptProbeSummary,
     *,
-    expected_min_deltas: int,
+    expected_min_partials: int,
     expected_finals: int,
     expected_final_sample_index: int,
     expected_last_text: str = "",
     expected_last_text_compact: str = "",
     expected_min_last_text_length: int = 0,
 ) -> None:
-    if summary.deltas < expected_min_deltas:
+    if summary.partials < expected_min_partials:
         raise TranscriptProbeError(
-            "Transcript delta count below expectation: "
-            f"expected at least {expected_min_deltas}, got {summary.deltas}"
+            "Transcript partial count below expectation: "
+            f"expected at least {expected_min_partials}, got {summary.partials}"
         )
     if summary.finals != expected_finals:
         raise TranscriptProbeError(
@@ -204,7 +204,7 @@ def validate_summary(
 
 
 def _validate_transcript_event(
-    event: TranscriptDelta | TranscriptFinal,
+    event: TranscriptFinal | TranscriptPartial,
     *,
     session_id: str,
     stream_id: str,

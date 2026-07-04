@@ -20,7 +20,6 @@ from fluent_audio.contracts import (
     AsrStop,
     AudioChunk,
     AudioFormat,
-    TranscriptDelta,
     TranscriptFinal,
     TranscriptPartial,
 )
@@ -28,7 +27,6 @@ from fluent_audio.dora import (
     DoraAudioMetadata,
     decode_asr_control_from_dora,
     decode_audio_chunk_from_dora,
-    encode_transcript_delta_for_dora,
     encode_transcript_final_for_dora,
     encode_transcript_partial_for_dora,
     encode_transcript_stream_final_marker_for_dora,
@@ -103,7 +101,6 @@ class NemotronStreamingNodeSummary(BaseModel):
     input_chunks: int = Field(ge=0)
     input_frames: int = Field(ge=0)
     control_events: int = Field(ge=0)
-    transcript_deltas: int = Field(ge=0)
     transcript_partials: int = Field(ge=0)
     transcript_finals: int = Field(ge=0)
     final_sample_index: int = Field(ge=0)
@@ -128,10 +125,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--channel-layout", default="interleaved")
     parser.add_argument("--backend", choices=["nemo"], required=True)
     parser.add_argument("--model-name", default=DEFAULT_NEMOTRON_MODEL_NAME)
+    parser.add_argument("--model-extracted-dir", type=Path)
     parser.add_argument("--target-lang", default="auto")
     parser.add_argument("--strip-lang-tags", action="store_true", default=True)
     parser.add_argument("--keep-lang-tags", action="store_true")
     parser.add_argument("--att-context-right-frames", type=int, default=3)
+    parser.add_argument("--partial-agreement-steps", type=int, default=1)
+    parser.add_argument("--partial-holdback-chars", type=int, default=0)
+    parser.add_argument(
+        "--final-transcript-mode",
+        choices=["retranscribe", "streaming"],
+        default="retranscribe",
+    )
     parser.add_argument("--cuda-device", type=int)
     return parser
 
@@ -222,9 +227,13 @@ def _backend_settings_from_args(args: argparse.Namespace) -> NemotronBackendSett
     return NemotronBackendSettings(
         backend=args.backend,
         model_name=args.model_name,
+        model_extracted_dir=args.model_extracted_dir,
         target_lang=args.target_lang,
         strip_lang_tags=not args.keep_lang_tags if args.keep_lang_tags else args.strip_lang_tags,
         att_context_right_frames=args.att_context_right_frames,
+        partial_agreement_steps=args.partial_agreement_steps,
+        partial_holdback_chars=args.partial_holdback_chars,
+        final_transcript_mode=args.final_transcript_mode,
         cuda_device=args.cuda_device,
     )
 
@@ -238,7 +247,6 @@ def run_nemotron_streaming_events(
     input_chunks = 0
     input_frames = 0
     control_events = 0
-    transcript_deltas = 0
     transcript_partials = 0
     transcript_finals = 0
     previous_audio: AudioChunk | None = None
@@ -258,7 +266,6 @@ def run_nemotron_streaming_events(
                 input_chunks=input_chunks,
                 input_frames=input_frames,
                 control_events=control_events,
-                transcript_deltas=transcript_deltas,
                 transcript_partials=transcript_partials,
                 transcript_finals=transcript_finals,
                 audio_closed_sample_index=audio_closed_sample_index,
@@ -279,7 +286,6 @@ def run_nemotron_streaming_events(
                 input_chunks=input_chunks,
                 input_frames=input_frames,
                 control_events=control_events,
-                transcript_deltas=transcript_deltas,
                 transcript_partials=transcript_partials,
                 transcript_finals=transcript_finals,
                 audio_closed_sample_index=audio_closed_sample_index,
@@ -301,7 +307,6 @@ def run_nemotron_streaming_events(
                     input_chunks=input_chunks,
                     input_frames=input_frames,
                     control_events=control_events,
-                    transcript_deltas=transcript_deltas,
                     transcript_partials=transcript_partials,
                     transcript_finals=transcript_finals,
                     audio_closed_sample_index=audio_closed_sample_index,
@@ -321,7 +326,6 @@ def run_nemotron_streaming_events(
                     input_chunks=input_chunks,
                     input_frames=input_frames,
                     control_events=control_events,
-                    transcript_deltas=transcript_deltas,
                     transcript_partials=transcript_partials,
                     transcript_finals=transcript_finals,
                     audio_closed_sample_index=audio_closed_sample_index,
@@ -334,7 +338,7 @@ def run_nemotron_streaming_events(
                 continue
             raise NemotronStreamingNodeError(f"Unexpected DORA input id: {input_id!r}")
         if event_type != "INPUT":
-            raise NemotronStreamingNodeError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         payload = event.get("value")
@@ -356,7 +360,6 @@ def run_nemotron_streaming_events(
                     input_chunks=input_chunks,
                     input_frames=input_frames,
                     control_events=control_events,
-                    transcript_deltas=transcript_deltas,
                     transcript_partials=transcript_partials,
                     transcript_finals=transcript_finals,
                     audio_closed_sample_index=audio_closed_sample_index,
@@ -373,11 +376,10 @@ def run_nemotron_streaming_events(
                 transcript_events = runtime.push_audio(chunk)
             except NemotronStreamingError as exc:
                 raise NemotronStreamingNodeError("Nemotron streaming audio error") from exc
-            sent_deltas, sent_partials, sent_finals = _send_transcript_events(
+            sent_partials, sent_finals = _send_transcript_events(
                 node,
                 transcript_events,
             )
-            transcript_deltas += sent_deltas
             transcript_partials += sent_partials
             transcript_finals += sent_finals
             input_chunks += 1
@@ -411,7 +413,6 @@ def run_nemotron_streaming_events(
                     input_chunks=input_chunks,
                     input_frames=input_frames,
                     control_events=control_events,
-                    transcript_deltas=transcript_deltas,
                     transcript_partials=transcript_partials,
                     transcript_finals=transcript_finals,
                     audio_closed_sample_index=audio_closed_sample_index,
@@ -431,11 +432,10 @@ def run_nemotron_streaming_events(
                 transcript_events = runtime.push_control(control)
             except NemotronStreamingError as exc:
                 raise NemotronStreamingNodeError("Nemotron streaming control error") from exc
-            sent_deltas, sent_partials, sent_finals = _send_transcript_events(
+            sent_partials, sent_finals = _send_transcript_events(
                 node,
                 transcript_events,
             )
-            transcript_deltas += sent_deltas
             transcript_partials += sent_partials
             transcript_finals += sent_finals
             control_events += 1
@@ -446,7 +446,6 @@ def run_nemotron_streaming_events(
                 input_chunks=input_chunks,
                 input_frames=input_frames,
                 control_events=control_events,
-                transcript_deltas=transcript_deltas,
                 transcript_partials=transcript_partials,
                 transcript_finals=transcript_finals,
                 audio_closed_sample_index=audio_closed_sample_index,
@@ -477,23 +476,19 @@ def run_nemotron_streaming_events(
 
 def _send_transcript_events(
     node,
-    events: list[TranscriptDelta | TranscriptFinal | TranscriptPartial],
-) -> tuple[int, int, int]:
-    sent_deltas = 0
+    events: list[TranscriptFinal | TranscriptPartial],
+) -> tuple[int, int]:
     sent_partials = 0
     sent_finals = 0
     for event in events:
-        if isinstance(event, TranscriptDelta):
-            payload, metadata = encode_transcript_delta_for_dora(event)
-            sent_deltas += 1
-        elif isinstance(event, TranscriptPartial):
+        if isinstance(event, TranscriptPartial):
             payload, metadata = encode_transcript_partial_for_dora(event)
             sent_partials += 1
         else:
             payload, metadata = encode_transcript_final_for_dora(event)
             sent_finals += 1
         node.send_output("transcript", payload, metadata=metadata.to_dora_metadata())
-    return sent_deltas, sent_partials, sent_finals
+    return sent_partials, sent_finals
 
 
 def _maybe_finish_after_input_completion(
@@ -504,7 +499,6 @@ def _maybe_finish_after_input_completion(
     input_chunks: int,
     input_frames: int,
     control_events: int,
-    transcript_deltas: int,
     transcript_partials: int,
     transcript_finals: int,
     audio_closed_sample_index: int | None,
@@ -528,7 +522,6 @@ def _maybe_finish_after_input_completion(
         input_chunks=input_chunks,
         input_frames=input_frames,
         control_events=control_events,
-        transcript_deltas=transcript_deltas,
         transcript_partials=transcript_partials,
         transcript_finals=transcript_finals,
         final_sample_index=final_sample_index,

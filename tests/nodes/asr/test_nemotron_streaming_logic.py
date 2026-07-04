@@ -25,7 +25,7 @@ class CollectingBackend(StreamingAsrBackend):
     def push_audio(self, chunk: AudioChunk) -> AsrBackendPushResult:
         self.pushed.append(chunk)
         pushed_frames = sum(item.frame_count for item in self.pushed)
-        return AsrBackendPushResult(delta_texts=(f"frames={pushed_frames}",))
+        return AsrBackendPushResult(partial_texts=(f"frames={pushed_frames}",))
 
     def stop(self, control: AsrStop) -> AsrBackendFinalResult:
         self.stopped.append(control)

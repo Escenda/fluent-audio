@@ -31,9 +31,11 @@ NEMOTRON_RUNTIME_MODULES: tuple[str, ...] = (
     "nemo.collections.asr.parts.utils.streaming_utils",
 )
 LANG_TAG_PATTERN = re.compile(r"\s*<[a-z]{2}(?:-[A-Z]{2})?>\s*$")
+STFT_EDGE_HOLDBACK_FRAMES = 2
 
 NemotronBackendKind = Literal["nemo"]
 NemotronComputeDtype = Literal["float32"]
+NemotronFinalTranscriptMode = Literal["retranscribe", "streaming"]
 
 
 class NemotronBackendError(ValueError):
@@ -51,10 +53,14 @@ class NemotronBackendSettings(BaseModel):
 
     backend: NemotronBackendKind
     model_name: str = Field(default=DEFAULT_NEMOTRON_MODEL_NAME, min_length=1)
+    model_extracted_dir: Path | None = None
     target_lang: str = Field(default="auto", min_length=1)
     strip_lang_tags: bool = True
     att_context_left_frames: int = Field(default=56, gt=0)
     att_context_right_frames: int = Field(default=3, ge=0)
+    partial_agreement_steps: int = Field(default=1, ge=1)
+    partial_holdback_chars: int = Field(default=0, ge=0)
+    final_transcript_mode: NemotronFinalTranscriptMode = "retranscribe"
     compute_dtype: NemotronComputeDtype = "float32"
     cuda_device: int | None = Field(default=None, ge=0)
 
@@ -76,6 +82,10 @@ class NemotronBackendSettings(BaseModel):
     def chunk_duration_ms(self) -> int:
         return (1 + self.att_context_right_frames) * 80
 
+    @property
+    def partial_update_interval_ms(self) -> int:
+        return self.chunk_duration_ms
+
 
 def build_nemotron_backend(settings: NemotronBackendSettings) -> StreamingAsrBackend:
     """Construct the configured backend or fail closed when runtime deps are absent."""
@@ -89,9 +99,8 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
     """Cache-aware NeMo RNNT backend for one active ASR turn at a time.
 
     The backend keeps NeMo's streaming buffer and encoder/decoder cache alive
-    for the active turn. It emits only append-only hypothesis suffixes as live
-    deltas; hypotheses that would rewrite already emitted text are held back and
-    resolved by the final full-turn transcript.
+    for the active turn. Live model hypotheses are emitted as replacement
+    partials; final text is still produced by the bounded turn transcript.
     """
 
     def __init__(self, settings: NemotronBackendSettings) -> None:
@@ -106,6 +115,7 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
         import torch
         from nemo.collections.asr.models import ASRModel
         from nemo.collections.asr.parts.utils.streaming_utils import CacheAwareStreamingAudioBuffer
+        from nemo.core.connectors.save_restore_connector import SaveRestoreConnector
 
         self._settings = settings
         self._np = np
@@ -114,9 +124,21 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
         self._device = _resolve_cuda_device(torch, settings.cuda_device)
         model_ref = _resolve_model_ref(settings.model_name)
         if model_ref.is_file_path:
+            if model_ref.path is None:
+                raise NemotronBackendError("Resolved Nemotron model file path is missing")
+            save_restore_connector = None
+            if settings.model_extracted_dir is not None:
+                extracted_dir = _prepare_nemo_extracted_dir(
+                    model_ref.path,
+                    settings.model_extracted_dir,
+                    SaveRestoreConnector,
+                )
+                save_restore_connector = SaveRestoreConnector()
+                save_restore_connector.model_extracted_dir = str(extracted_dir)
             self._model = ASRModel.restore_from(
                 str(model_ref.path),
                 map_location=str(self._device),
+                save_restore_connector=save_restore_connector,
             )
         else:
             self._model = ASRModel.from_pretrained(
@@ -127,19 +149,38 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
         self._model.eval()
         self._model.encoder.setup_streaming_params(att_context_size=list(settings.att_context_size))
         self._model.set_inference_prompt(settings.target_lang)
+        self._target_lang = settings.target_lang
         self._sample_rate_hz = int(self._model.cfg.preprocessor.sample_rate)
+        self._stream_chunk_sample_count = _native_stream_chunk_sample_count(self._model)
 
         self._active = False
         self._pending_sample_chunks: list[bytes] = []
         self._pending_frame_count = 0
-        self._emitted_text = ""
+        self._live_samples = None
+        self._streamed_samples = None
+        self._appended_feature_frames = 0
+        self._partial_filter = _ReplacementPartialFilter(
+            agreement_steps=settings.partial_agreement_steps,
+            holdback_chars=settings.partial_holdback_chars,
+        )
+        self._latest_stream_text = ""
         self._streaming_buffer = None
         self._stream_id = -1
         self._cache_last_channel = None
         self._cache_last_time = None
         self._cache_last_channel_len = None
         self._previous_hypotheses = None
+        self._previous_pred_out = None
         self._stream_step_index = 0
+
+    def set_target_lang(self, target_lang: str) -> None:
+        if self._active:
+            raise NemotronBackendError("NeMo backend target_lang cannot change while active")
+        if not target_lang:
+            raise NemotronBackendError("NeMo backend target_lang must be non-empty")
+        self._model.set_inference_prompt(target_lang)
+        self._target_lang = target_lang
+        self._settings = self._settings.model_copy(update={"target_lang": target_lang})
 
     def start(self, control: AsrStart, audio_format: AudioFormat) -> None:
         if self._active:
@@ -155,7 +196,11 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
         self._active = True
         self._pending_sample_chunks = []
         self._pending_frame_count = 0
-        self._emitted_text = ""
+        self._live_samples = self._np.empty(0, dtype=self._np.float32)
+        self._streamed_samples = self._np.empty(0, dtype=self._np.float32)
+        self._appended_feature_frames = 0
+        self._partial_filter.reset()
+        self._latest_stream_text = ""
         self._streaming_buffer = self._streaming_buffer_cls(
             model=self._model,
             online_normalization=False,
@@ -166,6 +211,7 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
             self._cache_last_channel_len,
         ) = self._model.encoder.get_initial_cache_state(batch_size=1)
         self._previous_hypotheses = None
+        self._previous_pred_out = None
         self._stream_id = -1
         self._stream_step_index = 0
 
@@ -174,22 +220,23 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
         samples = self._decode_audio_samples(chunk)
         self._pending_sample_chunks.append(samples.tobytes())
         self._pending_frame_count += chunk.frame_count
-        self._append_stream_audio(samples)
-        partial_texts, delta_texts = self._consume_available_stream_updates()
         return AsrBackendPushResult(
-            partial_texts=partial_texts,
-            delta_texts=delta_texts,
+            partial_texts=self._append_stream_audio(samples),
         )
 
     def stop(self, control: AsrStop) -> AsrBackendFinalResult:
         self._require_active_turn()
         if self._pending_frame_count <= 0:
             raise NemotronBackendError("NeMo backend stop received before audio")
-        samples = self._np.frombuffer(
-            b"".join(self._pending_sample_chunks),
-            dtype=self._np.dtype("<f4"),
-        ).astype(self._np.float32, copy=True)
-        text = self._transcribe_complete_turn(samples).strip()
+        if self._settings.final_transcript_mode == "streaming":
+            self._flush_streaming_residual()
+            text = self._latest_stream_text.strip()
+        else:
+            samples = self._np.frombuffer(
+                b"".join(self._pending_sample_chunks),
+                dtype=self._np.dtype("<f4"),
+            ).astype(self._np.float32, copy=True)
+            text = self._transcribe_complete_turn(samples).strip()
         self._reset_active_stream()
         return AsrBackendFinalResult(text=text)
 
@@ -207,24 +254,64 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
             f"Unsupported NeMo backend audio sample_format: {chunk.format.sample_format!r}"
         )
 
-    def _append_stream_audio(self, samples) -> None:
+    def _append_stream_audio(self, samples) -> tuple[str, ...]:
+        if self._live_samples is None:
+            raise NemotronBackendError("NeMo backend live audio buffer is not initialized")
+        # ponytail: one stream, tiny residual; replace with a deque only if concat shows up in profiles.
+        self._live_samples = self._np.concatenate((self._live_samples, samples))
+        partial_texts: list[str] = []
+        while len(self._live_samples) >= self._stream_chunk_sample_count:
+            chunk = self._live_samples[: self._stream_chunk_sample_count].copy()
+            self._live_samples = self._live_samples[self._stream_chunk_sample_count :].copy()
+            self._append_stream_audio_chunk(chunk)
+            partial_texts.extend(self._consume_available_stream_updates())
+        return tuple(partial_texts)
+
+    def _flush_streaming_residual(self) -> None:
+        if self._live_samples is None:
+            raise NemotronBackendError("NeMo backend live audio buffer is not initialized")
+        if len(self._live_samples) == 0:
+            return
+        needed = self._stream_chunk_sample_count - len(self._live_samples)
+        padding = self._np.zeros(needed, dtype=self._np.float32)
+        self._append_stream_audio(padding)
+
+    def _append_stream_audio_chunk(self, samples) -> None:
         if self._streaming_buffer is None:
             raise NemotronBackendError("NeMo backend streaming buffer is not initialized")
-        _processed_signal, _processed_signal_length, stream_id = (
-            self._streaming_buffer.append_audio(samples, stream_id=self._stream_id)
+        if self._streamed_samples is None:
+            raise NemotronBackendError("NeMo backend streamed audio prefix is not initialized")
+        # NeMo's append_audio() runs mel extraction and per-feature normalization on
+        # each appended piece in isolation; at small right-context the pieces are a
+        # few hundred milliseconds and the resulting features are corrupted enough
+        # to make Japanese partials unusable. Recompute features over the whole
+        # turn prefix (turn-bounded, mel is cheap next to the encoder) and append
+        # only the new frames, holding back the trailing STFT edge frames so they
+        # are re-emitted with real right context on a later step.
+        self._streamed_samples = self._np.concatenate((self._streamed_samples, samples))
+        processed_signal, processed_signal_length = self._streaming_buffer.preprocess_audio(
+            self._streamed_samples
         )
-        if self._stream_id < 0:
-            self._stream_id = 0
-        else:
-            self._stream_id = int(stream_id)
+        total_frames = int(processed_signal_length)
+        new_end = max(
+            self._appended_feature_frames,
+            total_frames - STFT_EDGE_HOLDBACK_FRAMES,
+        )
+        if new_end <= self._appended_feature_frames:
+            return
+        _signal, _signal_length, stream_id = self._streaming_buffer.append_processed_signal(
+            processed_signal[:, :, self._appended_feature_frames : new_end],
+            stream_id=self._stream_id,
+        )
+        self._appended_feature_frames = new_end
+        self._stream_id = max(int(stream_id), 0)
 
-    def _consume_available_stream_updates(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    def _consume_available_stream_updates(self) -> tuple[str, ...]:
         if self._streaming_buffer is None:
             raise NemotronBackendError("NeMo backend streaming buffer is not initialized")
         if self._cache_last_channel is None:
             raise NemotronBackendError("NeMo backend encoder cache is not initialized")
         partial_texts: list[str] = []
-        delta_texts: list[str] = []
         for chunk_audio, chunk_lengths in self._streaming_buffer:
             drop_extra_pre_encoded = 0
             if self._stream_step_index != 0:
@@ -238,13 +325,13 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
                     cache_last_channel_len=self._cache_last_channel_len,
                     keep_all_outputs=self._streaming_buffer.is_buffer_empty(),
                     previous_hypotheses=self._previous_hypotheses,
-                    previous_pred_out=None,
+                    previous_pred_out=self._previous_pred_out,
                     drop_extra_pre_encoded=drop_extra_pre_encoded,
                     return_transcription=True,
                     return_log_probs=False,
                 )
             (
-                _greedy_predictions,
+                self._previous_pred_out,
                 transcribed,
                 self._cache_last_channel,
                 self._cache_last_time,
@@ -255,14 +342,11 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
             normalized_text = self._normalized_hypothesis_text(transcribed)
             if not normalized_text:
                 continue
-            partial_texts.append(normalized_text)
-            self._emitted_text, delta = _append_only_delta(
-                emitted_text=self._emitted_text,
-                hypothesis_text=normalized_text,
-            )
-            if delta is not None:
-                delta_texts.append(delta)
-        return tuple(partial_texts), tuple(delta_texts)
+            self._latest_stream_text = normalized_text
+            filtered_text = self._partial_filter.update(normalized_text)
+            if filtered_text is not None:
+                partial_texts.append(filtered_text)
+        return tuple(partial_texts)
 
     def _transcribe_complete_turn(self, samples) -> str:
         streaming_buffer = self._streaming_buffer_cls(
@@ -276,8 +360,8 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
             cache_last_channel_len,
         ) = self._model.encoder.get_initial_cache_state(batch_size=1)
         previous_hypotheses = None
+        previous_pred_out = None
         current_text = ""
-        emitted_text = ""
         for step_index, (chunk_audio, chunk_lengths) in enumerate(streaming_buffer):
             drop_extra_pre_encoded = 0
             if step_index != 0:
@@ -291,13 +375,13 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
                     cache_last_channel_len=cache_last_channel_len,
                     keep_all_outputs=streaming_buffer.is_buffer_empty(),
                     previous_hypotheses=previous_hypotheses,
-                    previous_pred_out=None,
+                    previous_pred_out=previous_pred_out,
                     drop_extra_pre_encoded=drop_extra_pre_encoded,
                     return_transcription=True,
                     return_log_probs=False,
                 )
             (
-                _greedy_predictions,
+                previous_pred_out,
                 transcribed,
                 cache_last_channel,
                 cache_last_time,
@@ -308,10 +392,6 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
             if not normalized_text:
                 continue
             current_text = normalized_text
-            emitted_text, _delta = _append_only_delta(
-                emitted_text=emitted_text,
-                hypothesis_text=normalized_text,
-            )
         return current_text
 
     def _normalized_hypothesis_text(self, transcribed) -> str:
@@ -329,13 +409,18 @@ class NemoCacheAwareStreamingBackend(StreamingAsrBackend):
         self._active = False
         self._pending_sample_chunks = []
         self._pending_frame_count = 0
-        self._emitted_text = ""
+        self._live_samples = None
+        self._streamed_samples = None
+        self._appended_feature_frames = 0
+        self._partial_filter.reset()
+        self._latest_stream_text = ""
         self._streaming_buffer = None
         self._stream_id = -1
         self._cache_last_channel = None
         self._cache_last_time = None
         self._cache_last_channel_len = None
         self._previous_hypotheses = None
+        self._previous_pred_out = None
         self._stream_step_index = 0
 
 
@@ -344,6 +429,31 @@ class _ResolvedModelRef(BaseModel):
 
     is_file_path: bool
     path: Path | None = None
+
+
+class _ReplacementPartialFilter:
+    def __init__(self, *, agreement_steps: int, holdback_chars: int) -> None:
+        self._agreement_steps = agreement_steps
+        self._holdback_chars = holdback_chars
+        self._history: list[str] = []
+        self._last_emitted: str | None = None
+
+    def reset(self) -> None:
+        self._history = []
+        self._last_emitted = None
+
+    def update(self, text: str) -> str | None:
+        if self._holdback_chars > 0:
+            text = text[: -self._holdback_chars] if len(text) > self._holdback_chars else ""
+        self._history.append(text)
+        self._history = self._history[-self._agreement_steps :]
+        if len(self._history) < self._agreement_steps:
+            return None
+        agreed = _longest_common_prefix_many(self._history)
+        if agreed == self._last_emitted:
+            return None
+        self._last_emitted = agreed
+        return agreed
 
 
 def _missing_runtime_modules() -> tuple[str, ...]:
@@ -376,6 +486,56 @@ def _resolve_model_ref(model_name: str) -> _ResolvedModelRef:
     return _ResolvedModelRef(is_file_path=False)
 
 
+def _prepare_nemo_extracted_dir(
+    nemo_path: Path,
+    extracted_dir: Path,
+    connector_cls,
+) -> Path:
+    required = ("model_config.yaml", "model_weights.ckpt")
+    extracted_dir = extracted_dir.expanduser()
+    if extracted_dir.exists():
+        if not extracted_dir.is_dir():
+            raise NemotronBackendError(f"Nemotron extracted cache is not a directory: {extracted_dir}")
+        missing = [name for name in required if not (extracted_dir / name).exists()]
+        if not missing:
+            return extracted_dir
+        if any(extracted_dir.iterdir()):
+            raise NemotronBackendError(
+                "Nemotron extracted cache is incomplete: "
+                f"{extracted_dir} missing {', '.join(missing)}"
+            )
+    else:
+        extracted_dir.mkdir(parents=True)
+    connector_cls._unpack_nemo_file(str(nemo_path), str(extracted_dir))
+    missing = [name for name in required if not (extracted_dir / name).exists()]
+    if missing:
+        raise NemotronBackendError(
+            "Nemotron extracted cache did not contain required files after unpack: "
+            f"{extracted_dir} missing {', '.join(missing)}"
+        )
+    return extracted_dir
+
+
+def _native_stream_chunk_sample_count(model) -> int:
+    chunk_frames = _second_or_scalar(model.encoder.streaming_cfg.chunk_size)
+    return _streaming_frames_to_samples(model, chunk_frames)
+
+
+def _streaming_frames_to_samples(model, frames: int) -> int:
+    sample_rate_hz = int(model.cfg.preprocessor.sample_rate)
+    window_stride_s = float(getattr(model.cfg.preprocessor, "window_stride", 0.01))
+    return max(1, int(round(frames * window_stride_s * sample_rate_hz)))
+
+
+def _second_or_scalar(value) -> int:
+    if isinstance(value, (str, bytes)):
+        return int(value)
+    if hasattr(value, "__len__") and hasattr(value, "__getitem__"):
+        index = 1 if len(value) > 1 else 0
+        return int(value[index])
+    return int(value)
+
+
 def _single_hypothesis_text(hypotheses) -> str:
     if len(hypotheses) != 1:
         raise NemotronBackendError(f"NeMo backend expected one hypothesis, got {len(hypotheses)}")
@@ -385,22 +545,21 @@ def _single_hypothesis_text(hypotheses) -> str:
     return text
 
 
+def _longest_common_prefix_many(values: list[str]) -> str:
+    if not values:
+        return ""
+    prefix = values[0]
+    for value in values[1:]:
+        end = 0
+        for left_char, right_char in zip(prefix, value):
+            if left_char != right_char:
+                break
+            end += 1
+        prefix = prefix[:end]
+        if not prefix:
+            return ""
+    return prefix
+
+
 def _strip_lang_tag(text: str) -> str:
     return LANG_TAG_PATTERN.sub("", text)
-
-
-def _append_only_delta(
-    *,
-    emitted_text: str,
-    hypothesis_text: str,
-) -> tuple[str, str | None]:
-    if not hypothesis_text:
-        return emitted_text, None
-    if hypothesis_text == emitted_text:
-        return emitted_text, None
-    if not hypothesis_text.startswith(emitted_text):
-        return emitted_text, None
-    delta = hypothesis_text[len(emitted_text) :]
-    if not delta:
-        return emitted_text, None
-    return hypothesis_text, delta

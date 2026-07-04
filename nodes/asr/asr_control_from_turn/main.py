@@ -222,7 +222,7 @@ def run_asr_control_from_turn_events(
                 raise AsrControlFromTurnError(f"Unexpected DORA input id: {input_id!r}")
             raise AsrControlFromTurnError("DORA input closed before turn final marker")
         if event_type != "INPUT":
-            raise AsrControlFromTurnError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         if input_id != "turn":

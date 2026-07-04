@@ -2,7 +2,6 @@ import pytest
 
 from fluent_audio.contracts import AsrCancel, AsrStart, AsrStop, AudioChunk, AudioFormat
 from fluent_audio.dora import (
-    decode_transcript_delta_from_dora,
     decode_transcript_final_from_dora,
     decode_transcript_partial_from_dora,
     encode_asr_control_for_dora,
@@ -38,7 +37,7 @@ class CountingBackend(StreamingAsrBackend):
     def push_audio(self, chunk: AudioChunk) -> AsrBackendPushResult:
         self.pushed.append(chunk)
         pushed_frames = sum(item.frame_count for item in self.pushed)
-        return AsrBackendPushResult(delta_texts=(f"frames={pushed_frames}",))
+        return AsrBackendPushResult(partial_texts=(f"frames={pushed_frames}",))
 
     def stop(self, control: AsrStop) -> AsrBackendFinalResult:
         self.stopped.append(control)
@@ -65,7 +64,6 @@ class PartialBackend(CountingBackend):
         pushed_frames = sum(item.frame_count for item in self.pushed)
         return AsrBackendPushResult(
             partial_texts=(f"partial frames={pushed_frames}",),
-            delta_texts=(f"frames={pushed_frames}",),
         )
 
 
@@ -228,7 +226,6 @@ def _dora_control_final_event(*, seq: int):
 
 
 def _decode_transcript_outputs(fake_node: FakeDoraNode):
-    deltas = []
     partials = []
     finals = []
     stream_final = None
@@ -236,9 +233,8 @@ def _decode_transcript_outputs(fake_node: FakeDoraNode):
         assert output_id == "transcript"
         assert metadata is not None
         transcript_metadata = validate_dora_transcript_metadata(metadata)
-        if transcript_metadata.kind == "delta":
-            deltas.append(decode_transcript_delta_from_dora(payload, transcript_metadata))
-        elif transcript_metadata.kind == "partial":
+        assert transcript_metadata.kind != "delta"
+        if transcript_metadata.kind == "partial":
             partials.append(decode_transcript_partial_from_dora(payload, transcript_metadata))
         elif transcript_metadata.kind == "final":
             finals.append(decode_transcript_final_from_dora(payload, transcript_metadata))
@@ -248,7 +244,7 @@ def _decode_transcript_outputs(fake_node: FakeDoraNode):
                 transcript_metadata,
             )
     assert stream_final is not None
-    return deltas, partials, finals, stream_final
+    return partials, finals, stream_final
 
 
 def test_nemotron_streaming_node_emits_transcripts_and_stream_final_marker() -> None:
@@ -265,18 +261,16 @@ def test_nemotron_streaming_node_emits_transcripts_and_stream_final_marker() -> 
     )
 
     summary = run_nemotron_streaming_events(fake_node, _config(), CountingBackend())
-    deltas, partials, finals, stream_final = _decode_transcript_outputs(fake_node)
+    partials, finals, stream_final = _decode_transcript_outputs(fake_node)
 
     assert summary.input_chunks == 3
     assert summary.input_frames == 1536
     assert summary.control_events == 2
-    assert summary.transcript_deltas == 3
-    assert summary.transcript_partials == 0
+    assert summary.transcript_partials == 3
     assert summary.transcript_finals == 1
     assert summary.final_sample_index == 1536
-    assert [delta.text for delta in deltas] == ["frames=256", "frames=768", "frames=1280"]
-    assert [delta.seq for delta in deltas] == [0, 1, 2]
-    assert partials == []
+    assert [partial.text for partial in partials] == ["frames=256", "frames=768", "frames=1280"]
+    assert [partial.seq for partial in partials] == [0, 1, 2]
     assert finals[0].seq == 3
     assert finals[0].text == "final frames=1280"
     assert finals[0].start_sample_index == 256
@@ -297,16 +291,13 @@ def test_nemotron_streaming_node_emits_partial_hypotheses() -> None:
     )
 
     summary = run_nemotron_streaming_events(fake_node, _config(), PartialBackend())
-    deltas, partials, finals, stream_final = _decode_transcript_outputs(fake_node)
+    partials, finals, stream_final = _decode_transcript_outputs(fake_node)
 
     assert summary.transcript_partials == 1
-    assert summary.transcript_deltas == 1
     assert [partial.text for partial in partials] == ["partial frames=512"]
     assert [partial.seq for partial in partials] == [0]
-    assert [delta.text for delta in deltas] == ["frames=512"]
-    assert [delta.seq for delta in deltas] == [1]
-    assert finals[0].seq == 2
-    assert stream_final.seq == 3
+    assert finals[0].seq == 1
+    assert stream_final.seq == 2
 
 
 def test_nemotron_streaming_node_waits_for_pending_stop() -> None:
@@ -322,11 +313,11 @@ def test_nemotron_streaming_node_waits_for_pending_stop() -> None:
     )
 
     summary = run_nemotron_streaming_events(fake_node, _config(), CountingBackend())
-    deltas, _partials, finals, stream_final = _decode_transcript_outputs(fake_node)
+    partials, finals, stream_final = _decode_transcript_outputs(fake_node)
 
-    assert summary.transcript_deltas == 2
+    assert summary.transcript_partials == 2
     assert summary.transcript_finals == 1
-    assert [delta.text for delta in deltas] == ["frames=512", "frames=1024"]
+    assert [partial.text for partial in partials] == ["frames=512", "frames=1024"]
     assert finals[0].end_sample_index == 1024
     assert stream_final.start_sample_index == 1024
 
@@ -343,11 +334,10 @@ def test_nemotron_streaming_node_consumes_empty_final_without_transcript_final()
     )
 
     summary = run_nemotron_streaming_events(fake_node, _config(), EmptyFinalBackend())
-    deltas, partials, finals, stream_final = _decode_transcript_outputs(fake_node)
+    partials, finals, stream_final = _decode_transcript_outputs(fake_node)
 
-    assert summary.transcript_deltas == 0
+    assert summary.transcript_partials == 0
     assert summary.transcript_finals == 0
-    assert deltas == []
     assert partials == []
     assert finals == []
     assert stream_final.start_sample_index == 512
@@ -367,7 +357,7 @@ def test_nemotron_streaming_node_accepts_audio_final_after_transport_close() -> 
     )
 
     summary = run_nemotron_streaming_events(fake_node, _config(), CountingBackend())
-    _deltas, _partials, finals, stream_final = _decode_transcript_outputs(fake_node)
+    _partials, finals, stream_final = _decode_transcript_outputs(fake_node)
 
     assert summary.input_chunks == 2
     assert summary.input_frames == 1024
@@ -391,7 +381,7 @@ def test_nemotron_streaming_node_waits_for_stop_after_audio_input_closed() -> No
     )
 
     summary = run_nemotron_streaming_events(fake_node, _config(), CountingBackend())
-    _deltas, _partials, finals, stream_final = _decode_transcript_outputs(fake_node)
+    _partials, finals, stream_final = _decode_transcript_outputs(fake_node)
 
     assert summary.control_events == 2
     assert summary.transcript_finals == 1
@@ -413,7 +403,7 @@ def test_nemotron_streaming_node_accepts_queued_control_after_input_closed() -> 
     )
 
     summary = run_nemotron_streaming_events(fake_node, _config(), CountingBackend())
-    _deltas, _partials, finals, stream_final = _decode_transcript_outputs(fake_node)
+    _partials, finals, stream_final = _decode_transcript_outputs(fake_node)
 
     assert summary.control_events == 2
     assert summary.transcript_finals == 1
@@ -479,13 +469,11 @@ def test_nemotron_streaming_node_accepts_audio_input_closed_without_started_turn
     )
 
     summary = run_nemotron_streaming_events(fake_node, _config(), CountingBackend())
-    deltas, partials, finals, stream_final = _decode_transcript_outputs(fake_node)
+    partials, finals, stream_final = _decode_transcript_outputs(fake_node)
 
-    assert summary.transcript_deltas == 0
     assert summary.transcript_partials == 0
     assert summary.transcript_finals == 0
     assert summary.final_sample_index == 512
-    assert deltas == []
     assert partials == []
     assert finals == []
     assert stream_final.start_sample_index == 512
