@@ -1,0 +1,25 @@
+{"id":"return_home_001","input_text":"ホームに戻ってください。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"direct_home","notes":"日本語の基本命令。home をホームとして明確に帰還先にしている。"}
+{"id":"return_home_002","input_text":"そろそろ base に帰って。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"casual_base","notes":"base が現在位置ではなく帰還先として使われている。"}
+{"id":"return_home_003","input_text":"開始地点まで戻ってくれる？","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"starting_point_ja","notes":"starting point 相当の開始地点への帰還。"}
+{"id":"return_home_004","input_text":"starting point に戻りましょう。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"starting_point_en","notes":"英語句 starting point を明確なホーム位置として含む。"}
+{"id":"return_home_005","input_text":"充電ステーションへ帰還して。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"charging_station_ja","notes":"充電ステーションが明確な帰還先。"}
+{"id":"return_home_006","input_text":"charging station まで戻って待機して。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"charging_station_en","notes":"charging station をホーム兼待機位置として指定。"}
+{"id":"return_home_007","input_text":"ミッション終了、ホームポジションに戻って。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"mission_complete","notes":"作業終了後のホーム帰還。"}
+{"id":"return_home_008","input_text":"今の作業を切り上げて base へ戻れ。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"abort_and_return","notes":"作業中断を含むが主タスクは base への帰還。"}
+{"id":"return_home_009","input_text":"一旦 home に戻ってから待機。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"return_then_wait","notes":"帰還後待機を含む自然発話。"}
+{"id":"return_home_010","input_text":"出発した場所まで戻ってください。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"origin_phrase","notes":"出発地点をホーム相当として指す。"}
+{"id":"return_home_011","input_text":"もう十分です、元の場所に帰って。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"original_place","notes":"元の場所が帰還先として明確。"}
+{"id":"return_home_012","input_text":"安全のためホームへ戻してください。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"safety_return","notes":"安全理由を伴う return_home。"}
+{"id":"return_home_013","input_text":"バッテリーが気になるから charging station に帰還。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"battery_reason","notes":"バッテリー理由で charging station をホームとして指定。"}
+{"id":"return_home_014","input_text":"ベースまで帰って、そこで止まって。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"base_ja_stop","notes":"ベースへの帰還と停止。"}
+{"id":"return_home_015","input_text":"ロボットを home に戻して。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"operator_request","notes":"対象がロボットで、home への帰還が明確。"}
+{"id":"return_home_016","input_text":"巡回を終えて starting point へ戻ってください。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"patrol_complete","notes":"巡回後の starting point 帰還。"}
+{"id":"return_home_017","input_text":"ホームベースに帰還してください。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"home_base","notes":"ホームベースという明確な帰還先。"}
+{"id":"return_home_018","input_text":"もう戻っていいよ、base で待ってて。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"permission_return","notes":"許可形だが base への帰還指示として解釈する。"}
+{"id":"return_home_019","input_text":"初期位置へ戻してください。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"initial_position","notes":"初期位置をホームとして指定。"}
+{"id":"return_home_020","input_text":"充電ドックまで帰ってください。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"charging_dock","notes":"充電ドックへの帰還。"}
+{"id":"return_home_021","input_text":"帰還モードにして、ホームへ。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"mode_phrase","notes":"モード表現を含むが実行タスクは return_home。"}
+{"id":"return_home_022","input_text":"この辺で終了、starting point まで戻ろう。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"collaborative_phrase","notes":"共同作業風の発話で starting point への帰還。"}
+{"id":"return_home_023","input_text":"現在地から一番近い場所ではなく、登録済みの home に戻って。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"disambiguation_home","notes":"近場ではなく登録 home を明示する曖昧性排除ケース。"}
+{"id":"return_home_024","input_text":"ベースステーションまで戻って充電待機。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"base_station_charge","notes":"ベースステーションと充電待機を含む。"}
+{"id":"return_home_025","input_text":"作業を完了扱いにして charging station へ戻れ。","gold_task_json":{"tool":"return_home","confirmation":true},"error_tags":[],"case_type":"complete_and_return","notes":"完了扱いの指示と charging station 帰還。"}

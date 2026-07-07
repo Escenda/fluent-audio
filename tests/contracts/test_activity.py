@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from fluent_audio.contracts import TurnEvent, VoiceActivityEvent
+from fluent_dialogue_dora.contracts import TurnEvent, VoiceActivityEvent
 
 
 def test_voice_activity_event_accepts_probability_bounds() -> None:

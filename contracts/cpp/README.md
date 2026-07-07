@@ -12,5 +12,5 @@ Consume with CMake:
 
 ```cmake
 add_subdirectory(contracts/cpp)
-target_link_libraries(your_target PRIVATE fluent_audio_contracts)
+target_link_libraries(your_target PRIVATE fluent_dialogue_dora_contracts)
 ```

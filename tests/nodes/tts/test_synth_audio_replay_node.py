@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from fluent_audio.contracts import AudioFormat, SynthesizedAudioChunk
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioFormat, SynthesizedAudioChunk
+from fluent_dialogue_dora.dora import (
     decode_synthesized_audio_chunk_from_dora,
     validate_dora_synthesized_audio_final_marker,
     validate_dora_synthesized_audio_metadata,
@@ -11,7 +11,7 @@ from nodes.tts.synth_audio_replay.main import (
     iter_synth_audio_chunks,
     send_synth_audio_replay_dora,
 )
-from fluent_audio.offline import RawPcmReadConfig
+from fluent_dialogue_dora.offline import RawPcmReadConfig
 
 
 class FakeDoraNode:

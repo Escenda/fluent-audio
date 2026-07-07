@@ -1,32 +1,40 @@
 import pytest
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentMcpElicitationRequest,
     AgentTextDelta,
     AgentTurnDone,
     AgentTurnRequest,
     AgentUserInputQuestion,
     AgentUserInputRequest,
+    BargeInEvent,
     DialogueEvent,
     DialogueInput,
+    PlaybackState,
     TranscriptFinal,
     TtsTextChunk,
     TtsTextStreamFinal,
     VoiceSessionEvent,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     decode_agent_cancel_request_from_dora,
     decode_agent_turn_request_from_dora,
     decode_dialogue_event_from_dora,
+    decode_playback_command_from_dora,
+    decode_playback_control_command_from_dora,
     decode_tts_text_chunk_from_dora,
     decode_voice_session_event_from_dora,
     encode_agent_runtime_event_for_dora,
+    encode_barge_in_event_for_dora,
     encode_dialogue_input_for_dora,
+    encode_playback_state_for_dora,
     encode_transcript_final_for_dora,
     encode_transcript_stream_final_marker_for_dora,
     validate_dora_agent_cancel_metadata,
     validate_dora_agent_turn_request_metadata,
     validate_dora_dialogue_event_metadata,
+    validate_dora_playback_command_metadata,
+    validate_dora_playback_control_metadata,
     validate_dora_tts_text_metadata,
     validate_dora_tts_text_stream_final_marker,
     validate_dora_voice_session_metadata,
@@ -728,3 +736,237 @@ def test_dialogue_engine_rejects_stop_while_agent_turn_is_active() -> None:
 
     with pytest.raises(DialogueEngineError, match="agent turn is active"):
         run_dialogue_engine_events(fake_node, _config())
+
+
+def _playback_state_event(*, request_id: str, state: str, seq: int, played_frames: int):
+    return _input(
+        "playback_state",
+        encode_playback_state_for_dora(
+            PlaybackState(
+                request_id=request_id,
+                session_id="session-1",
+                user_turn_id="user-turn-1",
+                stream_id="speaker/main",
+                state=state,
+                seq=seq,
+                played_frames=played_frames,
+            )
+        ),
+    )
+
+
+def _barge_in_event(*, request_id: str, played_frames: int):
+    return _input(
+        "barge_in",
+        encode_barge_in_event_for_dora(
+            BargeInEvent(
+                session_id="session-1",
+                source_id="barge_in_detector",
+                stream_id="barge_in/main",
+                seq=0,
+                playback_request_id=request_id,
+                playback_stream_id="speaker/main",
+                played_frames=played_frames,
+                detected_sample_index=8000,
+                speech_probability=0.95,
+            )
+        ),
+    )
+
+
+def _playback_outputs(fake_node):
+    commands = []
+    controls = []
+    for output_id, data, metadata in fake_node.sent:
+        if output_id == "playback_command":
+            commands.append(
+                decode_playback_command_from_dora(
+                    data, validate_dora_playback_command_metadata(metadata)
+                )
+            )
+        elif output_id == "playback_control":
+            controls.append(
+                decode_playback_control_command_from_dora(
+                    data, validate_dora_playback_control_metadata(metadata)
+                )
+            )
+    return commands, controls
+
+
+def _agent_cancels(fake_node):
+    cancels = []
+    for output_id, data, metadata in fake_node.sent:
+        if output_id == "agent_cancel":
+            cancels.append(
+                decode_agent_cancel_request_from_dora(
+                    data, validate_dora_agent_cancel_metadata(metadata)
+                )
+            )
+    return cancels
+
+
+def test_dialogue_engine_barge_in_stops_playback_and_cancels_turn() -> None:
+    fake_node = FakeDoraNode(
+        [
+            _transcript_final_event(),
+            _agent_text("これはとても長い返答の途中です。"),
+            _playback_state_event(
+                request_id="tts-000000", state="playing", seq=0, played_frames=8000
+            ),
+            _barge_in_event(request_id="tts-000000", played_frames=8000),
+            _transcript_stream_final_event(),
+            {"type": "STOP"},
+        ]
+    )
+
+    summary = run_dialogue_engine_events(fake_node, _config())
+    commands, controls = _playback_outputs(fake_node)
+    cancels = _agent_cancels(fake_node)
+
+    assert len(commands) == 1
+    assert commands[0].command == "stop"
+    assert commands[0].request_id == "tts-000000"
+    assert commands[0].stream_id == "speaker/main"
+    assert commands[0].seq == 0
+    assert len(controls) == 1
+    assert controls[0].kind == "flush"
+    assert controls[0].stream_id == "speaker/cpal"
+    assert controls[0].fade_out_ms == 15
+    assert len(cancels) == 1
+    assert cancels[0].reason == "barge_in"
+    assert summary.cancel_requests == 1
+
+
+def test_dialogue_engine_ignores_transcript_during_playback_without_barge_in() -> None:
+    fake_node = FakeDoraNode(
+        [
+            _transcript_final_event(text="こんにちは"),
+            _agent_text("これは読み上げ中の返答です。"),
+            _playback_state_event(
+                request_id="tts-000000", state="playing", seq=0, played_frames=12000
+            ),
+            _transcript_final_event(text="これは読み上げ中の返答です", user_turn_id="echo-turn"),
+            _agent_done(),
+            _playback_state_event(
+                request_id="tts-000000", state="completed", seq=1, played_frames=24000
+            ),
+            _transcript_stream_final_event(),
+            {"type": "STOP"},
+        ]
+    )
+
+    summary = run_dialogue_engine_events(fake_node, _config())
+    turns = _agent_turns(fake_node)
+
+    assert summary.transcript_finals == 2
+    assert summary.agent_turn_requests == 1
+    assert len(turns) == 1
+    assert turns[0].text == "こんにちは"
+
+
+def test_dialogue_engine_barge_in_after_playback_done_only_cancels() -> None:
+    # If playback already completed, there is nothing to stop; barge-in must not
+    # emit a stop for a finished request (playback_queue would reject it).
+    fake_node = FakeDoraNode(
+        [
+            _transcript_final_event(),
+            _agent_text("短い返答です。"),
+            _playback_state_event(
+                request_id="tts-000000", state="playing", seq=0, played_frames=4000
+            ),
+            _playback_state_event(
+                request_id="tts-000000", state="completed", seq=1, played_frames=4000
+            ),
+            _barge_in_event(request_id="tts-000000", played_frames=4000),
+            _transcript_stream_final_event(),
+            {"type": "STOP"},
+        ]
+    )
+
+    run_dialogue_engine_events(fake_node, _config())
+    commands, controls = _playback_outputs(fake_node)
+
+    assert commands == []
+    assert controls == []
+
+
+def _agent_turns(fake_node):
+    turns = []
+    for output_id, data, metadata in fake_node.sent:
+        if output_id == "agent_turn":
+            turns.append(
+                decode_agent_turn_request_from_dora(
+                    data, validate_dora_agent_turn_request_metadata(metadata)
+                )
+            )
+    return turns
+
+
+def test_dialogue_engine_barge_in_computes_heard_text_across_chunks() -> None:
+    # Two spoken chunks; the second is interrupted partway. heard_text should be
+    # the fully-played first chunk plus the heard prefix of the second.
+    fake_node = FakeDoraNode(
+        [
+            _transcript_final_event(),
+            _agent_text("最初の文。次の文。"),
+            _playback_state_event(
+                request_id="tts-000001", state="playing", seq=0, played_frames=13715
+            ),
+            _barge_in_event(request_id="tts-000001", played_frames=13715),
+            _transcript_stream_final_event(),
+            {"type": "STOP"},
+        ]
+    )
+    run_dialogue_engine_events(fake_node, _config())
+    cancels = _agent_cancels(fake_node)
+    assert len(cancels) == 1
+    # 13715 frames / 48000 Hz * 7.0 cps ~= 2 chars of the second chunk.
+    assert cancels[0].heard_text == "最初の文。次の"
+
+
+def test_dialogue_engine_barge_in_prepends_heard_note_to_next_turn() -> None:
+    fake_node = FakeDoraNode(
+        [
+            _transcript_final_event(text="こんにちは"),
+            _agent_text("どういたしまして。"),
+            _playback_state_event(
+                request_id="tts-000000", state="playing", seq=0, played_frames=20000
+            ),
+            _barge_in_event(request_id="tts-000000", played_frames=20000),
+            _transcript_final_event(text="ちょっと待って", user_turn_id="user-turn-2"),
+            _agent_done(user_turn_id="user-turn-2", agent_turn_id="assistant-turn-000001"),
+            _transcript_stream_final_event(),
+            {"type": "STOP"},
+        ]
+    )
+    run_dialogue_engine_events(fake_node, _config())
+    turns = _agent_turns(fake_node)
+    assert len(turns) == 2
+    assert turns[0].text == "こんにちは"
+    # The interrupted reply's heard prefix is delivered as a note on turn 2.
+    assert "ちょっと待って" in turns[1].text
+    assert "遮られました" in turns[1].text
+    assert turns[1].text != "ちょっと待って"
+
+
+def test_dialogue_engine_barge_in_before_audio_has_no_heard_note() -> None:
+    # Barge-in with zero played frames: nothing heard, so no note and heard_text None.
+    fake_node = FakeDoraNode(
+        [
+            _transcript_final_event(text="こんにちは"),
+            _agent_text("どういたしまして。"),
+            _playback_state_event(
+                request_id="tts-000000", state="playing", seq=0, played_frames=0
+            ),
+            _barge_in_event(request_id="tts-000000", played_frames=0),
+            _transcript_final_event(text="やっぱりいいです", user_turn_id="user-turn-2"),
+            _agent_done(user_turn_id="user-turn-2", agent_turn_id="assistant-turn-000001"),
+            _transcript_stream_final_event(),
+            {"type": "STOP"},
+        ]
+    )
+    run_dialogue_engine_events(fake_node, _config())
+    cancels = _agent_cancels(fake_node)
+    turns = _agent_turns(fake_node)
+    assert cancels[0].heard_text is None
+    assert turns[1].text == "やっぱりいいです"

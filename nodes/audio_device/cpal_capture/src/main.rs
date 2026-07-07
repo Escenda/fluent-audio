@@ -9,9 +9,9 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, Device, DeviceId, StreamConfig};
 use dora_node_api::dora_core::config::DataId;
 use dora_node_api::DoraNode;
-use fluent_audio_io_boundary::{
-    capture_time_ns_for_frame_offset, i16_samples_to_s16le_bytes, AudioChunk, AudioFormat,
-    AudioMetadata, ChannelLayout, SampleFormat, AUDIO_OUTPUT_ID,
+use fluent_dialogue_dora_io_boundary::{
+    capture_time_ns_for_frame_offset, f32_samples_to_f32le_bytes, i16_samples_to_s16le_bytes,
+    AudioChunk, AudioFormat, AudioMetadata, ChannelLayout, SampleFormat, AUDIO_OUTPUT_ID,
 };
 use thiserror::Error;
 
@@ -50,7 +50,7 @@ enum CaptureError {
     #[error("DORA output failed: {0}")]
     DoraOutput(#[source] eyre::Report),
     #[error("audio boundary error: {0}")]
-    AudioBoundary(#[from] fluent_audio_io_boundary::AudioBoundaryError),
+    AudioBoundary(#[from] fluent_dialogue_dora_io_boundary::AudioBoundaryError),
 }
 
 #[derive(Parser, Debug)]
@@ -66,7 +66,7 @@ struct Args {
     sample_rate_hz: u32,
     #[arg(long)]
     channels: u16,
-    #[arg(long, value_parser = ["s16le"])]
+    #[arg(long, value_parser = ["s16le", "f32le"])]
     sample_format: String,
     #[arg(long, value_parser = ["interleaved"])]
     channel_layout: String,
@@ -128,7 +128,7 @@ impl TryFrom<Args> for CaptureConfig {
         )?;
         if args.chunk_frames == 0 {
             return Err(CaptureError::AudioBoundary(
-                fluent_audio_io_boundary::AudioBoundaryError::NonPositive {
+                fluent_dialogue_dora_io_boundary::AudioBoundaryError::NonPositive {
                     field: "chunk_frames",
                     value: u64::from(args.chunk_frames),
                 },
@@ -136,7 +136,7 @@ impl TryFrom<Args> for CaptureConfig {
         }
         if args.buffer_size_frames == 0 {
             return Err(CaptureError::AudioBoundary(
-                fluent_audio_io_boundary::AudioBoundaryError::NonPositive {
+                fluent_dialogue_dora_io_boundary::AudioBoundaryError::NonPositive {
                     field: "buffer_size_frames",
                     value: u64::from(args.buffer_size_frames),
                 },
@@ -144,7 +144,7 @@ impl TryFrom<Args> for CaptureConfig {
         }
         if args.queue_capacity_chunks == 0 {
             return Err(CaptureError::AudioBoundary(
-                fluent_audio_io_boundary::AudioBoundaryError::NonPositive {
+                fluent_dialogue_dora_io_boundary::AudioBoundaryError::NonPositive {
                     field: "queue_capacity_chunks",
                     value: args.queue_capacity_chunks as u64,
                 },
@@ -152,7 +152,7 @@ impl TryFrom<Args> for CaptureConfig {
         }
         if args.capture_timeout_ms == 0 {
             return Err(CaptureError::AudioBoundary(
-                fluent_audio_io_boundary::AudioBoundaryError::NonPositive {
+                fluent_dialogue_dora_io_boundary::AudioBoundaryError::NonPositive {
                     field: "capture_timeout_ms",
                     value: args.capture_timeout_ms,
                 },
@@ -202,14 +202,30 @@ fn run(config: CaptureConfig) -> Result<(), CaptureError> {
     let (sender, receiver) = sync_channel(config.queue_capacity_chunks);
     let overflowed = Arc::new(AtomicBool::new(false));
     let stream_error = Arc::new(AtomicBool::new(false));
-    let stream = build_s16le_input_stream(
-        &device,
-        stream_config,
-        config.format.frame_size_bytes() * config.chunk_frames as usize,
-        sender,
-        Arc::clone(&overflowed),
-        Arc::clone(&stream_error),
-    )?;
+    let chunk_size_bytes = config.format.frame_size_bytes() * config.chunk_frames as usize;
+    // The capture layer only reads the device into the wire-faithful contract format.
+    // For s16le it streams i16; for f32le it streams f32 (lossless from 24-bit sources
+    // opened through ALSA plug). Rate/channel/bit-depth conversion is the media graph's job.
+    let stream = match config.format.sample_format {
+        SampleFormat::S16Le => build_input_stream_typed::<i16>(
+            &device,
+            stream_config,
+            chunk_size_bytes,
+            i16_samples_to_s16le_bytes,
+            sender,
+            Arc::clone(&overflowed),
+            Arc::clone(&stream_error),
+        ),
+        SampleFormat::F32Le => build_input_stream_typed::<f32>(
+            &device,
+            stream_config,
+            chunk_size_bytes,
+            f32_samples_to_f32le_bytes,
+            sender,
+            Arc::clone(&overflowed),
+            Arc::clone(&stream_error),
+        ),
+    }?;
     stream.play().map_err(CaptureError::PlayStream)?;
 
     let output_id = DataId::from(AUDIO_OUTPUT_ID.to_owned());
@@ -300,10 +316,11 @@ fn run(config: CaptureConfig) -> Result<(), CaptureError> {
     Ok(())
 }
 
-fn build_s16le_input_stream(
+fn build_input_stream_typed<T: cpal::SizedSample + 'static>(
     device: &Device,
     config: StreamConfig,
     chunk_size_bytes: usize,
+    convert: fn(&[T]) -> Vec<u8>,
     sender: SyncSender<CaptureMessage>,
     overflowed: Arc<AtomicBool>,
     stream_error: Arc<AtomicBool>,
@@ -313,11 +330,11 @@ fn build_s16le_input_stream(
     device
         .build_input_stream(
             config,
-            move |data: &[i16], _info: &cpal::InputCallbackInfo| {
+            move |data: &[T], _info: &cpal::InputCallbackInfo| {
                 if overflowed.load(Ordering::Relaxed) {
                     return;
                 }
-                pending.extend_from_slice(&i16_samples_to_s16le_bytes(data));
+                pending.extend_from_slice(&convert(data));
                 while pending.len() >= chunk_size_bytes {
                     let chunk = pending.drain(..chunk_size_bytes).collect::<Vec<u8>>();
                     match sender.try_send(CaptureMessage::Chunk(chunk)) {

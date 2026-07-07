@@ -7,8 +7,8 @@ from types import ModuleType
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import AudioFormat
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioFormat
+from fluent_dialogue_dora.dora import (
     DoraMetadataMutableMapping,
     decode_agent_cancel_request_from_dora,
     decode_asr_control_from_dora,
@@ -187,11 +187,11 @@ def test_sidecar_imports_with_fake_ros_modules_and_keeps_ingress_topics_separate
     args = sidecar.build_parser().parse_args(["--dora"])
     config = sidecar._config_from_args(args)
 
-    assert config.topics.asr_control == "/fluent_audio/asr_control"
-    assert config.topics.asr_control_ingress == "/fluent_audio/in/asr_control"
-    assert config.topics.playback_command == "/fluent_audio/playback_command"
-    assert config.topics.playback_command_ingress == "/fluent_audio/in/playback_command"
-    assert config.topics.agent_cancel == "/fluent_audio/in/agent_cancel"
+    assert config.topics.asr_control == "/fluent_dialogue_dora/asr_control"
+    assert config.topics.asr_control_ingress == "/fluent_dialogue_dora/in/asr_control"
+    assert config.topics.playback_command == "/fluent_dialogue_dora/playback_command"
+    assert config.topics.playback_command_ingress == "/fluent_dialogue_dora/in/playback_command"
+    assert config.topics.agent_cancel == "/fluent_dialogue_dora/in/agent_cancel"
 
 
 def test_sidecar_generated_message_projection_conversion(
@@ -259,9 +259,9 @@ def test_sidecar_command_ingress_subscriptions_emit_dora_outputs(
     playback_command_message.stream_id = "audio/playback"
     playback_command_message.seq = 4
 
-    _subscription_for_topic(ros_node, "/fluent_audio/in/agent_cancel").callback(cancel_message)
-    _subscription_for_topic(ros_node, "/fluent_audio/in/asr_control").callback(asr_control_message)
-    _subscription_for_topic(ros_node, "/fluent_audio/in/playback_command").callback(
+    _subscription_for_topic(ros_node, "/fluent_dialogue_dora/in/agent_cancel").callback(cancel_message)
+    _subscription_for_topic(ros_node, "/fluent_dialogue_dora/in/asr_control").callback(asr_control_message)
+    _subscription_for_topic(ros_node, "/fluent_dialogue_dora/in/playback_command").callback(
         playback_command_message
     )
 
@@ -316,7 +316,7 @@ def test_sidecar_publisher_emits_generated_message_to_registered_topic(
         )
     )
 
-    audio_publisher = _publisher_for_topic(ros_node, "/fluent_audio/audio")
+    audio_publisher = _publisher_for_topic(ros_node, "/fluent_dialogue_dora/audio")
     assert audio_publisher.qos_depth == 4
     assert len(audio_publisher.messages) == 1
     generated = audio_publisher.messages[0]
@@ -339,8 +339,8 @@ def _install_fake_ros_modules(monkeypatch: pytest.MonkeyPatch) -> None:
     builtin_interfaces_msg_module = ModuleType("builtin_interfaces.msg")
     std_msgs_module = ModuleType("std_msgs")
     std_msgs_msg_module = ModuleType("std_msgs.msg")
-    fluent_interfaces_module = ModuleType("fluent_audio_interfaces")
-    fluent_interfaces_msg_module = ModuleType("fluent_audio_interfaces.msg")
+    fluent_interfaces_module = ModuleType("fluent_dialogue_dora_interfaces")
+    fluent_interfaces_msg_module = ModuleType("fluent_dialogue_dora_interfaces.msg")
     dora_module = ModuleType("dora")
 
     rclpy_module.init = _fake_rclpy_init
@@ -375,8 +375,8 @@ def _install_fake_ros_modules(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "builtin_interfaces.msg", builtin_interfaces_msg_module)
     monkeypatch.setitem(sys.modules, "std_msgs", std_msgs_module)
     monkeypatch.setitem(sys.modules, "std_msgs.msg", std_msgs_msg_module)
-    monkeypatch.setitem(sys.modules, "fluent_audio_interfaces", fluent_interfaces_module)
-    monkeypatch.setitem(sys.modules, "fluent_audio_interfaces.msg", fluent_interfaces_msg_module)
+    monkeypatch.setitem(sys.modules, "fluent_dialogue_dora_interfaces", fluent_interfaces_module)
+    monkeypatch.setitem(sys.modules, "fluent_dialogue_dora_interfaces.msg", fluent_interfaces_msg_module)
     monkeypatch.setitem(sys.modules, "dora", dora_module)
 
 

@@ -12,18 +12,18 @@ fi
 
 TTS_FIXTURE_PORT="${TTS_FIXTURE_PORT:-18092}"
 DORA_WEB_BRIDGE_PORT="${DORA_WEB_BRIDGE_PORT:-18093}"
-SESSION_ID="${FLUENT_AUDIO_FILE_SESSION_ID:-file-realtime-session}"
-USER_TURN_ID="${FLUENT_AUDIO_FILE_USER_TURN_ID:-user-turn-000001}"
-ASSISTANT_TURN_ID="${FLUENT_AUDIO_FILE_ASSISTANT_TURN_ID:-assistant-turn-000000}"
-AGENT_TEXT="${FLUENT_AUDIO_FILE_AGENT_TEXT:-file-realtime-agent-ok.}"
-NEMOTRON_MODEL_PATH="${FLUENT_AUDIO_NEMOTRON_MODEL_PATH:-../daihen-physical-ai.audio/data/models/fluent_audio/nemotron-3.5-asr-streaming-0.6b/nemotron-3.5-asr-streaming-0.6b.nemo}"
+SESSION_ID="${FLUENT_DIALOGUE_DORA_FILE_SESSION_ID:-file-realtime-session}"
+USER_TURN_ID="${FLUENT_DIALOGUE_DORA_FILE_USER_TURN_ID:-user-turn-000001}"
+ASSISTANT_TURN_ID="${FLUENT_DIALOGUE_DORA_FILE_ASSISTANT_TURN_ID:-assistant-turn-000000}"
+AGENT_TEXT="${FLUENT_DIALOGUE_DORA_FILE_AGENT_TEXT:-file-realtime-agent-ok.}"
+NEMOTRON_MODEL_PATH="${FLUENT_DIALOGUE_DORA_NEMOTRON_MODEL_PATH:-data/models/fluent_dialogue_dora/nemotron-3.5-asr-streaming-0.6b/nemotron-3.5-asr-streaming-0.6b.nemo}"
 
 cd "${REPO_ROOT}"
 export PYTHONPATH="${REPO_ROOT}/src:${REPO_ROOT}/contracts/python/src${PYTHONPATH:+:${PYTHONPATH}}"
 
 NEMOTRON_VENV_WRAPPER="graphs/out/nemotron_venv_python.sh"
 if [[ ! -f "${NEMOTRON_VENV_WRAPPER}" ]]; then
-  echo "missing ${NEMOTRON_VENV_WRAPPER}; build the fluent_audio nemotron_streaming_asr venv first" >&2
+  echo "missing ${NEMOTRON_VENV_WRAPPER}; build the fluent_dialogue_dora nemotron_streaming_asr venv first" >&2
   exit 66
 fi
 if [[ ! -s "${NEMOTRON_MODEL_PATH}" ]]; then
@@ -95,7 +95,7 @@ agent_text = sys.argv[6]
 tts_port = sys.argv[7]
 web_port = sys.argv[8]
 model_path = sys.argv[9]
-asr_audio_queue_size = positive_int_env("FLUENT_AUDIO_ASR_AUDIO_QUEUE_SIZE", "4096")
+asr_audio_queue_size = positive_int_env("FLUENT_DIALOGUE_DORA_ASR_AUDIO_QUEUE_SIZE", "4096")
 
 command_file.write_text(
     "\n".join(
@@ -214,7 +214,7 @@ nodes: list[str] = [
             "--threshold",
             "0.5",
             "--level-period-windows",
-            os.environ.get("FLUENT_AUDIO_VAD_LEVEL_PERIOD_WINDOWS", "8"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_VAD_LEVEL_PERIOD_WINDOWS", "8"),
         ]
     ),
     "    inputs:",
@@ -344,7 +344,7 @@ nodes: list[str] = [
             session_id,
             "--stream-id",
             f"transcript/{session_id}",
-            "--expected-min-deltas",
+            "--expected-min-partials",
             "0",
             "--expected-finals",
             "1",

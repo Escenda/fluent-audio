@@ -1,7 +1,7 @@
-//! Generated Rust protobuf contracts for fluent-audio.
+//! Generated Rust protobuf contracts for fluent-dialogue-dora.
 
-pub mod fluent_audio {
+pub mod fluent_dialogue_dora {
     pub mod v1 {
-        include!(concat!(env!("OUT_DIR"), "/fluent_audio.v1.rs"));
+        include!(concat!(env!("OUT_DIR"), "/fluent_dialogue_dora.v1.rs"));
     }
 }

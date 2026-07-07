@@ -1,0 +1,86 @@
+{%- macro render_content(content) -%}
+    {%- if content is string -%}
+        {{- content -}}
+    {%- elif content is iterable and content is not mapping -%}
+        {%- for item in content -%}
+            {%- if 'text' in item -%}
+                {{- item.text -}}
+            {%- elif content is none or content is undefined -%}
+                {{- '' -}}
+            {%- else -%}
+                {{- raise_exception('Unexpected item type in content.') -}}
+            {%- endif -%}
+        {%- endfor -%}
+    {%- elif content is none or content is undefined -%}
+        {{- '' -}}
+    {%- else -%}
+        {{- raise_exception('Unexpected content type.') -}}
+    {%- endif -%}
+{%- endmacro -%}
+{%- set system = namespace(text='') -%}
+{%- for message in messages -%}
+    {%- if message.role == 'system' or message.role == 'developer' -%}
+        {%- set content = render_content(message.content)|trim -%}
+        {%- if content -%}
+            {%- if system.text -%}
+                {%- set system.text = system.text + '\n\n' + content -%}
+            {%- else -%}
+                {%- set system.text = content -%}
+            {%- endif -%}
+        {%- endif -%}
+    {%- endif -%}
+{%- endfor -%}
+{%- if tools and tools is iterable and tools is not mapping -%}
+    {{- '<|im_start|>system\n' -}}
+    {{- '# Tools\n\nYou have access to the following functions:\n\n<tools>' -}}
+    {%- for tool in tools -%}
+        {{- '\n' -}}
+        {{- tool | tojson -}}
+    {%- endfor -%}
+    {{- '\n</tools>' -}}
+    {{- '\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n</function>\n</tool_call>' -}}
+    {%- if system.text -%}
+        {{- '\n\n' + system.text -}}
+    {%- endif -%}
+    {{- '<|im_end|>\n' -}}
+{%- elif system.text -%}
+    {{- '<|im_start|>system\n' + system.text + '<|im_end|>\n' -}}
+{%- endif -%}
+{%- for message in messages -%}
+    {%- set content = render_content(message.content)|trim -%}
+    {%- if message.role == 'system' or message.role == 'developer' -%}
+    {%- elif message.role == 'user' -%}
+        {{- '<|im_start|>user\n' + content + '<|im_end|>\n' -}}
+    {%- elif message.role == 'assistant' -%}
+        {{- '<|im_start|>assistant\n' + content -}}
+        {%- if message.tool_calls and message.tool_calls is iterable and message.tool_calls is not mapping -%}
+            {%- for tool_call in message.tool_calls -%}
+                {%- if tool_call.function is defined -%}
+                    {%- set tool_call = tool_call.function -%}
+                {%- endif -%}
+                {{- '\n<tool_call>\n<function=' + tool_call.name + '>\n' -}}
+                {%- if tool_call.arguments is defined -%}
+                    {%- for args_name, args_value in tool_call.arguments|items -%}
+                        {{- '<parameter=' + args_name + '>\n' -}}
+                        {{- args_value if args_value is string else args_value | tojson | safe -}}
+                        {{- '\n</parameter>\n' -}}
+                    {%- endfor -%}
+                {%- endif -%}
+                {{- '</function>\n</tool_call>' -}}
+            {%- endfor -%}
+        {%- endif -%}
+        {{- '<|im_end|>\n' -}}
+    {%- elif message.role == 'tool' -%}
+        {{- '<|im_start|>user\n<tool_response>\n' + content + '\n</tool_response><|im_end|>\n' -}}
+    {%- else -%}
+        {{- raise_exception('Unexpected message role: ' + message.role) -}}
+    {%- endif -%}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+    {{- '<|im_start|>assistant\n' -}}
+    {%- if enable_thinking is defined and enable_thinking is true -%}
+        {{- '<think>\n' -}}
+    {%- else -%}
+        {{- '<think>\n\n</think>\n\n' -}}
+    {%- endif -%}
+{%- endif -%}

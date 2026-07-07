@@ -14,7 +14,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/run_non_live_completion_smoke.sh [options]
 
-Runs the representative non-live verification set for fluent-audio.
+Runs the representative non-live verification set for fluent-dialogue-dora.
 Live Codex model turns and live approval turns are intentionally excluded.
 
 Options:
@@ -78,7 +78,7 @@ run_shell_stage() {
 }
 
 assert_no_managed_source_absolute_home_paths() {
-  local output_file="/tmp/fluent_audio_abs_paths.txt"
+  local output_file="/tmp/fluent_dialogue_dora_abs_paths.txt"
   rm -f "${output_file}"
   find . \
     \( -path './.git' \
@@ -127,7 +127,7 @@ run_shell_stage "media_graph passthrough DORA smoke" \
   "mkdir -p artifacts/media_graph && uvx --from dora-rs-cli dora run graphs/media_graph_passthrough.yml --uv && cmp tests/fixtures/offline/input.s16le artifacts/media_graph/passthrough_main.s16le && cmp tests/fixtures/offline/input.s16le artifacts/media_graph/passthrough_tap.s16le"
 
 run_shell_stage "media_graph resample DORA smoke and GStreamer reference comparison" \
-  "mkdir -p artifacts/media_graph && uvx --from dora-rs-cli dora run graphs/media_graph_resample.yml --uv && gst-launch-1.0 -q filesrc location=tests/fixtures/cpal/silence_48k_stereo_250ms.s16le ! rawaudioparse format=pcm pcm-format=s16le sample-rate=48000 num-channels=2 interleaved=true ! audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate=16000,channels=2,layout=interleaved ! filesink location=/tmp/fluent_audio_gst_resampled_16k.s16le && cmp /tmp/fluent_audio_gst_resampled_16k.s16le artifacts/media_graph/resampled_16k.s16le"
+  "mkdir -p artifacts/media_graph && uvx --from dora-rs-cli dora run graphs/media_graph_resample.yml --uv && gst-launch-1.0 -q filesrc location=tests/fixtures/cpal/silence_48k_stereo_250ms.s16le ! rawaudioparse format=pcm pcm-format=s16le sample-rate=48000 num-channels=2 interleaved=true ! audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate=16000,channels=2,layout=interleaved ! filesink location=/tmp/fluent_dialogue_dora_gst_resampled_16k.s16le && cmp /tmp/fluent_dialogue_dora_gst_resampled_16k.s16le artifacts/media_graph/resampled_16k.s16le"
 
 if [[ "${RUN_DEVICE_SMOKES}" == "1" ]]; then
   run_stage "CPAL capture hardware build" \
@@ -212,7 +212,7 @@ else
 fi
 
 run_shell_stage "no forbidden loose contract typing patterns" \
-  "grep -RInE 'dict\\[str, Any\\]|from typing import Any|: object|list\\[object\\]|dict\\[str, object\\]|# type: ignore|except ImportError' src nodes tests --exclude-dir=target --exclude-dir=__pycache__ --exclude-dir=.venv >/tmp/fluent_audio_forbidden_patterns.txt && { cat /tmp/fluent_audio_forbidden_patterns.txt; exit 1; } || test ! -s /tmp/fluent_audio_forbidden_patterns.txt"
+  "grep -RInE 'dict\\[str, Any\\]|from typing import Any|: object|list\\[object\\]|dict\\[str, object\\]|# type: ignore|except ImportError' src nodes tests --exclude-dir=target --exclude-dir=__pycache__ --exclude-dir=.venv >/tmp/fluent_dialogue_dora_forbidden_patterns.txt && { cat /tmp/fluent_dialogue_dora_forbidden_patterns.txt; exit 1; } || test ! -s /tmp/fluent_dialogue_dora_forbidden_patterns.txt"
 
 run_stage "no managed-source absolute home paths" \
   assert_no_managed_source_absolute_home_paths

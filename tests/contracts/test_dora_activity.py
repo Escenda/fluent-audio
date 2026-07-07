@@ -1,8 +1,8 @@
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import AudioLevelEvent, VoiceActivityEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioLevelEvent, VoiceActivityEvent
+from fluent_dialogue_dora.dora import (
     DoraAudioLevelMetadataError,
     DoraVoiceActivityFinalMarkerError,
     DoraVoiceActivityMetadataError,
@@ -14,7 +14,7 @@ from fluent_audio.dora import (
     validate_dora_audio_level_metadata,
     validate_dora_voice_activity_final_marker,
 )
-from fluent_audio_contracts.fluent_audio.v1.vad_pb2 import (
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1.vad_pb2 import (
     AudioLevelEvent as PbAudioLevelEvent,
     VOICE_ACTIVITY_STATE_SPEECH,
     VoiceActivityEvent as PbVoiceActivityEvent,
@@ -44,9 +44,9 @@ def test_voice_activity_event_dora_roundtrips_as_protobuf_payload() -> None:
     assert proto.source_id == "fixture"
     assert metadata.final is False
     assert metadata.to_dora_metadata() == {
-        "fluent_audio_codec": "protobuf",
-        "fluent_audio_schema_version": "fluent_audio.v1",
-        "fluent_audio_message_type": PbVoiceActivityEvent.DESCRIPTOR.full_name,
+        "fluent_dialogue_dora_codec": "protobuf",
+        "fluent_dialogue_dora_schema_version": "fluent_dialogue_dora.v1",
+        "fluent_dialogue_dora_message_type": PbVoiceActivityEvent.DESCRIPTOR.full_name,
     }
     assert decoded == event
 
@@ -102,7 +102,7 @@ def test_voice_activity_dora_rejects_missing_transport_metadata() -> None:
     event = _activity_event()
     payload, metadata = encode_voice_activity_event_for_dora(event)
     missing_type_metadata = metadata.to_dora_metadata()
-    del missing_type_metadata["fluent_audio_message_type"]
+    del missing_type_metadata["fluent_dialogue_dora_message_type"]
 
     with pytest.raises(DoraVoiceActivityMetadataError, match="metadata is invalid"):
         decode_voice_activity_event_from_dora(payload, None)
@@ -160,7 +160,7 @@ def test_voice_activity_dora_rejects_message_type_mismatch() -> None:
         sample_index=1280,
     )
     wrong_metadata = metadata.to_dora_metadata()
-    wrong_metadata["fluent_audio_message_type"] = PbVoiceActivityEvent.DESCRIPTOR.full_name
+    wrong_metadata["fluent_dialogue_dora_message_type"] = PbVoiceActivityEvent.DESCRIPTOR.full_name
 
     with pytest.raises(DoraVoiceActivityMetadataError, match="protobuf did not validate"):
         decode_voice_activity_event_from_dora(payload, wrong_metadata)

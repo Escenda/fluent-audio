@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package fluent_dialogue_dora.v1;
+
+enum DiagnosticSeverity {
+  DIAGNOSTIC_SEVERITY_UNSPECIFIED = 0;
+  DIAGNOSTIC_SEVERITY_OK = 1;
+  DIAGNOSTIC_SEVERITY_WARN = 2;
+  DIAGNOSTIC_SEVERITY_ERROR = 3;
+  DIAGNOSTIC_SEVERITY_FATAL = 4;
+}
+
+enum NodeState {
+  NODE_STATE_UNSPECIFIED = 0;
+  NODE_STATE_STARTING = 1;
+  NODE_STATE_READY = 2;
+  NODE_STATE_RUNNING = 3;
+  NODE_STATE_DEGRADED = 4;
+  NODE_STATE_STOPPING = 5;
+  NODE_STATE_STOPPED = 6;
+  NODE_STATE_FAILED = 7;
+}
+
+message NodeStatus {
+  string node_id = 1;
+  NodeState state = 2;
+  uint64 seq = 3;
+  uint64 observed_time_ns = 4;
+  optional string message = 5;
+}
+
+message DiagnosticEvent {
+  string node_id = 1;
+  DiagnosticSeverity severity = 2;
+  uint64 seq = 3;
+  uint64 observed_time_ns = 4;
+  string code = 5;
+  string message = 6;
+}

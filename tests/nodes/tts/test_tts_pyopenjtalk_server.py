@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from fluent_audio.contracts import TtsTextChunk
+from fluent_dialogue_dora.contracts import TtsTextChunk
 from nodes.tts.tts_backend.main import (
     TtsBackendAudioChunkEvent,
     TtsBackendAudioDoneEvent,
@@ -113,7 +113,7 @@ def test_pyopenjtalk_backend_requires_existing_dictionary_dir() -> None:
 
     with pytest.raises(TtsPyOpenJTalkServerError, match="not a directory"):
         PyOpenJTalkBackend(
-            config=_config(Path("/tmp/fluent-audio-missing-openjtalk-dict")),
+            config=_config(Path("/tmp/fluent-dialogue-dora-missing-openjtalk-dict")),
             runtime=runtime,
         )
 

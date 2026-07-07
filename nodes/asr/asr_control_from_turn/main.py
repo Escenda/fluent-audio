@@ -15,8 +15,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import AsrCancel, AsrStart, AsrStop, TurnEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AsrCancel, AsrStart, AsrStop, TurnEvent
+from fluent_dialogue_dora.dora import (
     decode_turn_event_from_dora,
     encode_asr_control_for_dora,
     encode_asr_control_final_marker_for_dora,

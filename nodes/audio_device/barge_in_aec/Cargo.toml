@@ -1,0 +1,19 @@
+[package]
+name = "fluent-dialogue-dora-barge-in-aec"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[[bin]]
+name = "barge_in_aec"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+dora-node-api = "0.5.0"
+eyre = "0.6"
+fluent-dialogue-dora-io-boundary = { path = "../rust_audio_boundary" }
+sonora = "0.1.0"
+thiserror = "2.0"
+webrtc-audio-processing = { version = "~2.1", features = ["bundled"] }
+webrtc-audio-processing-config = "2.1"

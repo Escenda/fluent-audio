@@ -6,7 +6,7 @@ This task is for the implementation subagent that will build the first verified 
 
 Do not start this task until `contracts` is green in [build-plan.md](build-plan.md).
 
-The raw PCM source and sink must use the public contracts from `src/fluent_audio/contracts/`. They must not define a parallel audio payload shape.
+The raw PCM source and sink must use the public contracts from `src/fluent_dialogue_dora/contracts/`. They must not define a parallel audio payload shape.
 
 ## Goal
 
@@ -26,8 +26,8 @@ Allowed paths:
 
 - `nodes/audio_device/raw_pcm_source/`
 - `nodes/audio_device/raw_pcm_sink/`
-- `src/fluent_audio/offline/`
-- `src/fluent_audio/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
+- `src/fluent_dialogue_dora/offline/`
+- `src/fluent_dialogue_dora/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
 - `graphs/offline_roundtrip.yml`
 - `graphs/README.md`
 - `tests/nodes/audio_device/`
@@ -36,7 +36,7 @@ Allowed paths:
 
 Do not touch:
 
-- `src/fluent_audio/contracts/`, except to report a missing contract requirement
+- `src/fluent_dialogue_dora/contracts/`, except to report a missing contract requirement
 - CPAL, media graph, perception, synthesis, interaction, agent, or bridge nodes
 - `pyproject.toml`, unless a dependency is truly required and explicitly justified in the report
 
@@ -100,7 +100,7 @@ The DORA boundary should be explicit:
 - contract fields travel as metadata
 - metadata is validated back into `AudioChunk` at the receiving boundary
 
-If DORA metadata cannot carry a required type directly, introduce a typed encode/decode helper under `src/fluent_audio/dora/`. Do not use untyped dictionaries past that boundary.
+If DORA metadata cannot carry a required type directly, introduce a typed encode/decode helper under `src/fluent_dialogue_dora/dora/`. Do not use untyped dictionaries past that boundary.
 
 ## Offline Roundtrip Dataflow
 

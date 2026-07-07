@@ -3,8 +3,9 @@ import threading
 import time
 
 import pytest
+from pydantic import BaseModel
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentApprovalRequest,
     AgentApprovalResponse,
     AgentCancelRequest,
@@ -20,7 +21,7 @@ from fluent_audio.contracts import (
     AgentUserInputRequest,
     AgentUserInputResponse,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     decode_agent_approval_request_from_dora,
     decode_agent_mcp_elicitation_request_from_dora,
     decode_agent_runtime_event_from_dora,
@@ -45,6 +46,7 @@ from nodes.dialogue_engine.codex_app_server.main import (
     CodexApprovalResponseSubmission,
     CodexAppServerConfig,
     CodexAppServerNodeError,
+    CodexAppServerTurnStreamSummary,
     CodexControlQueue,
     CodexCommandApprovalRequestEnvelope,
     CodexFileChangeApprovalRequestEnvelope,
@@ -59,6 +61,10 @@ from nodes.dialogue_engine.codex_app_server.main import (
     CodexServerMessage,
     CodexToolUserInputJsonRpcResponse,
     CodexToolUserInputRequestEnvelope,
+    CodexThreadState,
+    CodexTurnReference,
+    CodexTurnStartJsonRpcResponse,
+    CodexTurnStartResult,
     PendingCodexApproval,
     PendingCodexMcpElicitationRequest,
     PendingCodexUserInputRequest,
@@ -69,6 +75,7 @@ from nodes.dialogue_engine.codex_app_server.main import (
     ProjectedToolEvent,
     ProjectedTurnDoneEvent,
     ProjectedUserInputRequestEvent,
+    SubprocessCodexJsonRpcTransport,
     parse_codex_server_message_line,
     parse_codex_ignorable_notification_line,
     project_codex_server_message,
@@ -78,13 +85,20 @@ from nodes.dialogue_engine.codex_app_server.main import (
     resolve_app_server_command,
     resolve_instruction_text,
     run_codex_app_server_events,
+    _send_agent_approval,
+    _send_agent_done,
+    _send_agent_mcp_elicitation_request,
+    _send_agent_text,
+    _send_agent_tool,
+    _send_agent_user_input_request,
 )
 
 
 class FakeDoraNode:
-    def __init__(self, events) -> None:
+    def __init__(self, events, *, timeout_events_before_next: int = 0) -> None:
         self._events = events
         self._index = 0
+        self._timeout_events_before_next = timeout_events_before_next
         self.sent = []
 
     def __iter__(self):
@@ -98,6 +112,12 @@ class FakeDoraNode:
         return event
 
     def next(self, timeout=None):
+        if timeout is not None and self._timeout_events_before_next > 0:
+            self._timeout_events_before_next -= 1
+            return {
+                "type": "ERROR",
+                "error": "Timeout event stream error: Receiver timed out",
+            }
         return self.__next__()
 
     def send_output(self, output_id, data, metadata=None) -> None:
@@ -105,29 +125,167 @@ class FakeDoraNode:
 
 
 class FakeCodexAppServerTransport:
-    def __init__(self, *, turn_events: tuple[ProjectedAppServerEvent, ...] = ()) -> None:
-        self._turn_events = turn_events
+    def __init__(
+        self,
+        *,
+        turn_events: tuple[ProjectedAppServerEvent, ...] = (),
+        turn_done_on_interrupt: ProjectedTurnDoneEvent | None = None,
+    ) -> None:
+        self._turn_events = list(turn_events)
+        self._active_turn_started = False
+        self._turn_done_seen = False
+        self._turn_done_on_interrupt = turn_done_on_interrupt
+        self._node = None
+        self._control_queue: CodexControlQueue | None = None
+        self._approval_response_timeout_seconds = 300.0
+        self._text_deltas = 0
+        self._turn_done = 0
+        self._approval_requests = 0
+        self._approval_responses = 0
+        self._user_input_requests = 0
+        self._user_input_responses = 0
+        self._mcp_elicitation_requests = 0
+        self._mcp_elicitation_responses = 0
+        self._tool_events = 0
+        self._pending_approval_ids: set[str] = set()
+        self._pending_user_input_request_ids: set[str] = set()
+        self._pending_mcp_elicitation_request_ids: set[str] = set()
         self.turn_requests: list[AgentTurnRequest] = []
         self.approval_responses: list[AgentApprovalResponse] = []
         self.user_input_responses: list[AgentUserInputResponse] = []
         self.mcp_elicitation_responses: list[AgentMcpElicitationResponse] = []
         self.cancel_requests: list[AgentCancelRequest] = []
 
-    def stream_turn(self, request: AgentTurnRequest) -> tuple[ProjectedAppServerEvent, ...]:
+    def bind_dora_outputs(
+        self,
+        node,
+        control_queue: CodexControlQueue,
+        *,
+        approval_response_timeout_seconds: float,
+    ) -> None:
+        self._node = node
+        self._control_queue = control_queue
+        self._approval_response_timeout_seconds = approval_response_timeout_seconds
+
+    def start_turn(self, request: AgentTurnRequest) -> None:
         self.turn_requests.append(request)
-        return self._turn_events
+        self._active_turn_started = True
+        self._turn_done_seen = False
+        for index, event in enumerate(self._turn_events):
+            self._emit_event(
+                event,
+                wait_for_approval_response=index < len(self._turn_events) - 1,
+            )
+
+    def _emit_event(
+        self,
+        event: ProjectedAppServerEvent,
+        *,
+        wait_for_approval_response: bool = False,
+    ) -> None:
+        node = self._node
+        if node is None:
+            raise CodexAppServerNodeError("fake transport was not bound to DORA outputs")
+        if self._turn_done_seen:
+            raise CodexAppServerNodeError("Codex emitted event after turn_done")
+        if isinstance(event, ProjectedTextDeltaEvent):
+            _send_agent_text(node, event.to_contract())
+            self._text_deltas += 1
+        elif isinstance(event, ProjectedTurnDoneEvent):
+            _send_agent_done(node, event.to_contract())
+            self._turn_done += 1
+            self._turn_done_seen = True
+            self._active_turn_started = False
+        elif isinstance(event, ProjectedApprovalRequestEvent):
+            control_queue = self._control_queue
+            if control_queue is None:
+                raise CodexAppServerNodeError("fake approval arrived before control queue bind")
+            control_queue.mark_pending_approval(event)
+            _send_agent_approval(node, event.to_contract())
+            self._approval_requests += 1
+            self._pending_approval_ids.add(event.approval_id)
+            if wait_for_approval_response:
+                response = control_queue.wait_for_approval_response(
+                    event,
+                    timeout_seconds=self._approval_response_timeout_seconds,
+                )
+                if response is None:
+                    raise CodexAppServerNodeError("timed out waiting for approval response")
+                self.respond_approval(response)
+                control_queue.cancel_pending_approval(event)
+            else:
+                def wait_for_approval_response() -> None:
+                    response = control_queue.wait_for_approval_response(
+                        event,
+                        timeout_seconds=self._approval_response_timeout_seconds,
+                    )
+                    if response is not None:
+                        self.respond_approval(response)
+                    control_queue.cancel_pending_approval(event)
+
+                threading.Thread(target=wait_for_approval_response, daemon=True).start()
+        elif isinstance(event, ProjectedUserInputRequestEvent):
+            _send_agent_user_input_request(node, event.to_contract())
+            self._user_input_requests += 1
+            self._pending_user_input_request_ids.add(event.request_id)
+        elif isinstance(event, ProjectedMcpElicitationRequestEvent):
+            _send_agent_mcp_elicitation_request(node, event.to_contract())
+            self._mcp_elicitation_requests += 1
+            self._pending_mcp_elicitation_request_ids.add(event.request_id)
+        elif isinstance(event, ProjectedToolEvent):
+            _send_agent_tool(node, event.to_contract())
+            self._tool_events += 1
 
     def respond_approval(self, response: AgentApprovalResponse) -> None:
+        if response.approval_id not in self._pending_approval_ids:
+            raise CodexAppServerNodeError("approval response arrived without a pending approval")
+        self._pending_approval_ids.remove(response.approval_id)
         self.approval_responses.append(response)
+        self._approval_responses += 1
 
     def respond_user_input(self, response: AgentUserInputResponse) -> None:
+        if response.request_id not in self._pending_user_input_request_ids:
+            raise CodexAppServerNodeError(
+                "user-input response arrived without a pending user-input request"
+            )
+        self._pending_user_input_request_ids.remove(response.request_id)
         self.user_input_responses.append(response)
+        self._user_input_responses += 1
 
     def respond_mcp_elicitation(self, response: AgentMcpElicitationResponse) -> None:
+        if response.request_id not in self._pending_mcp_elicitation_request_ids:
+            raise CodexAppServerNodeError(
+                "MCP elicitation response arrived without a pending MCP elicitation request"
+            )
+        self._pending_mcp_elicitation_request_ids.remove(response.request_id)
         self.mcp_elicitation_responses.append(response)
+        self._mcp_elicitation_responses += 1
 
     def interrupt_turn(self, request: AgentCancelRequest) -> None:
         self.cancel_requests.append(request)
+        if self._turn_done_on_interrupt is not None:
+            self._emit_event(self._turn_done_on_interrupt)
+
+    def raise_if_failed(self) -> None:
+        return
+
+    def assert_idle(self) -> None:
+        if self._active_turn_started and not self._turn_done_seen:
+            raise CodexAppServerNodeError("Codex turn stream ended without exactly one turn_done")
+
+    def output_summary(self) -> CodexAppServerTurnStreamSummary:
+        return CodexAppServerTurnStreamSummary(
+            text_deltas=self._text_deltas,
+            turn_done=self._turn_done,
+            approval_requests=self._approval_requests,
+            approval_responses=self._approval_responses,
+            user_input_requests=self._user_input_requests,
+            user_input_responses=self._user_input_responses,
+            mcp_elicitation_requests=self._mcp_elicitation_requests,
+            mcp_elicitation_responses=self._mcp_elicitation_responses,
+            cancel_requests=0,
+            tool_events=self._tool_events,
+        )
 
 
 def _input(input_id: str, encoded):
@@ -377,6 +535,30 @@ def _parse_message(line: str) -> CodexServerMessage:
     return message
 
 
+def test_codex_failed_mcp_item_without_turn_identity_projects_tool_failure() -> None:
+    turn = _turn_request()
+    active = _active_turn()
+    message = _parse_message(
+        '{"method":"item/completed","params":{"item":{'
+        '"type":"mcpToolCall","id":"call-1","server":"fake_robot",'
+        '"tool":"request_confirmation","status":"failed",'
+        '"result":{"content":[{"type":"text","text":"validation failed"}]}}}}'
+    )
+
+    projected = project_codex_server_message(turn, active, message, seq=7)
+
+    assert projected == ProjectedToolEvent(
+        session_id="session-1",
+        user_turn_id="user-turn-1",
+        tool_call_id="call-1",
+        tool_name="fake_robot.request_confirmation",
+        tool_event="failed",
+        seq=7,
+        summary="failed",
+        error_message="validation failed",
+    )
+
+
 def test_codex_app_server_turn_stream_projects_validated_events_to_dora() -> None:
     turn = _turn_request()
     transport = FakeCodexAppServerTransport(
@@ -543,6 +725,27 @@ def test_codex_app_server_posts_cancel_request_to_active_transport() -> None:
     assert fake_node.sent == []
 
 
+def test_codex_app_server_interrupts_active_turn_while_streaming_text() -> None:
+    cancel = _cancel_request()
+    transport = FakeCodexAppServerTransport(
+        turn_events=(_text_delta(),),
+        turn_done_on_interrupt=_turn_done(status="cancelled"),
+    )
+    fake_node = FakeDoraNode([_turn_event(_turn_request()), _cancel_event(cancel), {"type": "STOP"}])
+
+    summary = run_codex_app_server_events(fake_node, transport)
+    _agent_events, text_deltas, turn_done, _approvals, _user_inputs, _mcp_elicitations, _tools = (
+        _decode_outputs(fake_node)
+    )
+
+    assert transport.cancel_requests == [cancel]
+    assert summary.cancel_requests == 1
+    assert summary.text_deltas == 1
+    assert summary.turn_done == 1
+    assert text_deltas[0].text == "Hello"
+    assert turn_done[0].status == "cancelled"
+
+
 def test_codex_app_server_rejects_dora_approval_response_input() -> None:
     transport = FakeCodexAppServerTransport()
     fake_node = FakeDoraNode(
@@ -575,18 +778,12 @@ def test_codex_control_queue_rejects_response_without_pending_approval() -> None
 def test_codex_app_server_accepts_cancel_while_waiting_for_approval_response() -> None:
     cancel = _cancel_request()
     transport = FakeCodexAppServerTransport(
-        turn_events=(
-            _approval(),
-            _turn_done(status="cancelled"),
-        ),
+        turn_events=(_approval(),),
+        turn_done_on_interrupt=_turn_done(status="cancelled"),
     )
     fake_node = FakeDoraNode([_turn_event(_turn_request()), _cancel_event(cancel), {"type": "STOP"}])
 
-    summary = run_codex_app_server_events(
-        fake_node,
-        transport,
-        poll_dora_control_during_approval=True,
-    )
+    summary = run_codex_app_server_events(fake_node, transport)
 
     assert transport.cancel_requests == [cancel]
     assert transport.approval_responses == []
@@ -863,6 +1060,102 @@ def test_codex_jsonrpc_permissions_approval_response_grants_or_denies_requested_
     }
 
 
+def test_codex_jsonrpc_transport_buffers_approval_during_turn_start_in_flight() -> None:
+    turn = _turn_request()
+    node = FakeDoraNode([])
+    control_queue = CodexControlQueue()
+    approval = _parse_message(
+        '{"id":"approval-1","method":"item/commandExecution/requestApproval","params":{'
+        '"threadId":"thread-1","turnId":"codex-turn-1","itemId":"item-1",'
+        '"command":"robot move","reason":"Move the robot?"}}'
+    )
+    written: list[BaseModel] = []
+    transport = SubprocessCodexJsonRpcTransport.__new__(SubprocessCodexJsonRpcTransport)
+    transport._config = CodexAppServerConfig(command=("fixture",), timeout_seconds=1.0)
+    transport._request_seq = 0
+    transport._thread_by_session = {
+        turn.session_id: CodexThreadState(session_id=turn.session_id, thread_id="thread-1")
+    }
+    transport._active_turn_by_session = {}
+    transport._pending_approval_by_id = {}
+    transport._pending_user_input_by_id = {}
+    transport._pending_mcp_elicitation_by_id = {}
+    transport._pending_messages = []
+    transport._turn_start_in_flight = False
+    transport._turn_start_thread_id = None
+    transport._turn_start_pending_messages = []
+    transport._active_stream = None
+    transport._node = node
+    transport._control_queue = control_queue
+    transport._approval_response_timeout_seconds = 1.0
+    transport._state_lock = threading.RLock()
+    transport._send_output_lock = threading.Lock()
+    transport._write_lock = threading.Lock()
+    transport._response_condition = threading.Condition()
+    transport._response_line_by_id = {}
+    transport._response_error_by_id = {}
+    transport._stdout_error = None
+    transport._text_deltas = 0
+    transport._turn_done = 0
+    transport._approval_requests = 0
+    transport._approval_responses = 0
+    transport._user_input_requests = 0
+    transport._user_input_responses = 0
+    transport._mcp_elicitation_requests = 0
+    transport._mcp_elicitation_responses = 0
+    transport._tool_events = 0
+
+    def send_turn_start(
+        _thread: CodexThreadState,
+        _request: AgentTurnRequest,
+    ) -> CodexTurnStartJsonRpcResponse:
+        assert transport._turn_start_in_flight
+        assert transport._turn_start_thread_id == "thread-1"
+        transport._handle_codex_server_message(approval)
+        assert node.sent == []
+        return CodexTurnStartJsonRpcResponse(
+            id="turn-start",
+            result=CodexTurnStartResult(
+                turn=CodexTurnReference(id="codex-turn-1", status="inProgress")
+            ),
+        )
+
+    def write_model(message: BaseModel) -> None:
+        written.append(message)
+
+    transport._send_turn_start = send_turn_start
+    transport._write_model = write_model
+
+    transport.start_turn(turn)
+    control_queue.submit_approval_response(
+        (turn.session_id, turn.user_turn_id, "approval-1"),
+        CodexApprovalResponseSubmission(decision="accept"),
+    )
+    deadline = time.monotonic() + 2.0
+    while not written and time.monotonic() < deadline:
+        time.sleep(0.01)
+    _agent_events, _text_deltas, _turn_done, approvals, _user_inputs, _mcp_elicitations, _tools = (
+        _decode_outputs(node)
+    )
+
+    assert transport._turn_start_in_flight is False
+    assert transport._turn_start_thread_id is None
+    assert transport._turn_start_pending_messages == []
+    assert approvals == [
+        AgentApprovalRequest(
+            session_id=turn.session_id,
+            user_turn_id=turn.user_turn_id,
+            approval_id="approval-1",
+            seq=0,
+            prompt="Move the robot?",
+            action_label="robot move",
+        )
+    ]
+    assert written
+    assert transport.output_summary().approval_requests == 1
+    assert transport.output_summary().approval_responses == 1
+
+
 def test_codex_jsonrpc_user_input_projects_and_builds_typed_response() -> None:
     turn = _turn_request()
     active = _active_turn()
@@ -1047,6 +1340,12 @@ def test_codex_jsonrpc_parser_accepts_live_non_turn_notifications() -> None:
         '"windowMinutes":300,"resetsInSeconds":1,'
         '"limitReachedType":null}}}}'
     )
+    hook_started = parse_codex_ignorable_notification_line(
+        '{"method":"hook/started","params":{"hook":{"type":"agent","entries":[]}}}'
+    )
+    hook_completed = parse_codex_ignorable_notification_line(
+        '{"method":"hook/completed","params":{"hook":{"type":"agent","entries":[]}}}'
+    )
 
     assert config_warning is not None
     assert generic_warning is not None
@@ -1056,6 +1355,8 @@ def test_codex_jsonrpc_parser_accepts_live_non_turn_notifications() -> None:
     assert thread_status is not None
     assert token_usage is not None
     assert rate_limits is not None
+    assert hook_started is not None
+    assert hook_completed is not None
     assert parse_codex_ignorable_notification_line('{"method":"unknown","params":{}}') is None
 
 

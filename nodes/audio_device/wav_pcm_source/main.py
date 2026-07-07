@@ -11,9 +11,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import AudioChunk
-from fluent_audio.dora import encode_audio_chunk_for_dora, encode_audio_final_marker_for_dora
-from fluent_audio.offline import (
+from fluent_dialogue_dora.contracts import AudioChunk
+from fluent_dialogue_dora.dora import encode_audio_chunk_for_dora, encode_audio_final_marker_for_dora
+from fluent_dialogue_dora.offline import (
     WavPcmReadConfig,
     capture_time_ns_for_frame_offset,
     iter_wav_pcm_chunks,

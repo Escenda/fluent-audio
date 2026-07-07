@@ -1,11 +1,11 @@
-from fluent_audio_contracts.fluent_audio.v1.asr_pb2 import AsrControl, AsrStart
-from fluent_audio_contracts.fluent_audio.v1.audio_pb2 import (
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1.asr_pb2 import AsrControl, AsrStart
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1.audio_pb2 import (
     CHANNEL_LAYOUT_INTERLEAVED,
     SAMPLE_FORMAT_S16LE,
     AudioFormat,
     AudioFrame,
 )
-from fluent_audio_contracts.fluent_audio.v1.tts_pb2 import SynthesizedAudioChunk
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1.tts_pb2 import SynthesizedAudioChunk
 
 
 def test_generated_audio_frame_imports_and_serializes() -> None:

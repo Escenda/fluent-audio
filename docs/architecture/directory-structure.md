@@ -11,7 +11,7 @@ This repo separates the things that should not be mixed:
 ## Top Level
 
 ```text
-fluent-audio/
+fluent-dialogue-dora/
 ├── contracts/
 ├── nodes/
 ├── bridges/
@@ -19,7 +19,7 @@ fluent-audio/
 ├── graphs/
 ├── environments/
 ├── tools/
-├── src/fluent_audio/
+├── src/fluent_dialogue_dora/
 ├── docs/
 └── tests/
 ```
@@ -29,7 +29,7 @@ fluent-audio/
 ```text
 contracts/
 ├── proto/
-│   └── fluent_audio/
+│   └── fluent_dialogue_dora/
 │       └── v1/
 ├── python/
 ├── rust/
@@ -39,7 +39,7 @@ contracts/
 `contracts/proto` is the schema source of truth. Generated language packages
 live under `contracts/<language>`.
 
-`src/fluent_audio` holds runtime helpers that are not generated contract code:
+`src/fluent_dialogue_dora` holds runtime helpers that are not generated contract code:
 DORA payload helpers, offline IO helpers, and shared typed utilities.
 
 ## Executable Nodes
@@ -102,7 +102,7 @@ boundary used by that surface.
 ```text
 bridges/
 ├── ros2_bridge/
-│   ├── fluent_audio_interfaces/
+│   ├── fluent_dialogue_dora_interfaces/
 │   ├── main.py
 │   ├── ingress.py
 │   ├── messages.py

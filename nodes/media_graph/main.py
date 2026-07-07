@@ -11,8 +11,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from fluent_audio.contracts import AudioChunk, AudioFormat, require_contiguous_audio_chunks
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioChunk, AudioFormat, require_contiguous_audio_chunks
+from fluent_dialogue_dora.dora import (
     DoraAudioFinalMarker,
     decode_audio_chunk_from_dora,
     encode_audio_chunk_for_dora,
@@ -355,7 +355,7 @@ class GStreamerMediaGraph:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the fluent-audio GStreamer media graph.")
+    parser = argparse.ArgumentParser(description="Run the fluent-dialogue-dora GStreamer media graph.")
     parser.add_argument("--dora", action="store_true")
     parser.add_argument("--input-source-id", required=True)
     parser.add_argument("--input-stream-id", required=True)
@@ -460,7 +460,7 @@ def run_media_graph_events(
                 closure_state.input_closed_before_final = True
                 continue
             if event_type != "INPUT":
-                raise MediaGraphInputError(f"Unexpected DORA event type: {event_type!r}")
+                continue
 
             if completed_summary is not None:
                 raise MediaGraphInputError("DORA audio input arrived after final marker")

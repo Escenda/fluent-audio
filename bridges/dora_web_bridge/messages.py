@@ -9,6 +9,25 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from bridges.dora_web_bridge.projection import WebBridgeProjection
 
 
+WebTrackTopic = Literal[
+    "session/state",
+    "audio/level",
+    "vad/activity",
+    "vad/turn",
+    "asr/control",
+    "asr/transcript",
+    "dialogue/event",
+    "agent/text",
+    "agent/done",
+    "agent/approval",
+    "agent/user-input",
+    "agent/mcp-elicitation",
+    "agent/tool",
+    "tts/text",
+    "barge-in/event",
+    "playback/state",
+    "playback/done",
+]
 FinalMarkerInputId = Literal["activity", "turn", "transcript"]
 OpenStreamInputId = Literal[
     "meter",
@@ -22,6 +41,7 @@ OpenStreamInputId = Literal[
     "agent_mcp_elicitation",
     "agent_tool",
     "tts",
+    "barge_in",
     "playback_state",
     "playback_done",
 ]
@@ -40,6 +60,7 @@ OPEN_STREAM_INPUT_IDS: tuple[OpenStreamInputId, ...] = (
     "agent_mcp_elicitation",
     "agent_tool",
     "tts",
+    "barge_in",
     "playback_state",
     "playback_done",
 )
@@ -61,6 +82,24 @@ class DoraWebBridgeTopicEvent(BaseModel):
     topic: str = Field(min_length=1)
     input_id: WebBridgeInputId
     event: WebBridgeProjection
+
+
+class DoraWebBridgeTrackFrame(BaseModel):
+    """Latest typed frame for one dashboard track."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    topic: WebTrackTopic
+    global_offset: int = Field(ge=0)
+    event: WebBridgeProjection
+
+
+class DoraWebBridgeTrackSnapshotResponse(BaseModel):
+    """Current latest frame per dashboard track."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    tracks: tuple[DoraWebBridgeTrackFrame, ...]
 
 
 class WebApprovalResponseSubmission(BaseModel):

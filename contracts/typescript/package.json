@@ -1,10 +1,10 @@
 {
-  "name": "@fluent-audio/contracts",
+  "name": "@fluent-dialogue-dora/contracts",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "commonjs",
-  "main": "src/generated/fluent_audio_v1.js",
-  "types": "src/generated/fluent_audio_v1.d.ts",
+  "main": "src/generated/fluent_dialogue_dora_v1.js",
+  "types": "src/generated/fluent_dialogue_dora_v1.d.ts",
   "files": [
     "src/generated"
   ],

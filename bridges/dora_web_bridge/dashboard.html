@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fluent Audio Live Topics</title>
+  <title>Fluent Dialogue Dora Live Topics</title>
   <style>
     :root {
       --ink: #111111;
@@ -568,6 +568,11 @@
       background: var(--bg);
     }
 
+    .node.unknown .d {
+      border: 1.2px dashed var(--gray-2);
+      background: var(--bg);
+    }
+
     .node .nm {
       flex: 1;
       min-width: 0;
@@ -824,7 +829,7 @@
     <pre class="l-body node-log-body" id="node-log"></pre>
   </div>
   <pre id="details">{}</pre>
-  <script id="initial-data" type="application/json">__FLUENT_AUDIO_INITIAL_STATE__</script>
+  <script id="initial-data" type="application/json">__FLUENT_DIALOGUE_DORA_INITIAL_STATE__</script>
 
   <script>
     const topicsEl = document.getElementById("topics");
@@ -863,7 +868,6 @@
     let renderQueued = false;
     let topicRefreshQueued = false;
     let lastTopicRefreshAt = 0;
-    let latestEvents = new Map();
     let latestTranscriptFinalText = "";
     let latestTranscriptPartialText = "";
     let transcriptDeltaText = "";
@@ -876,6 +880,7 @@
     let currentDisplayTurnId = null;
     let currentAsrTurnId = null;
     let latestNodeStatus = [];
+    let trackProvider = createTrackProvider(bridgeSessionId);
     const MAX_RETAINED_EVENTS = 500;
     const MAX_CONVERSATION_TURNS = 80;
     const MAX_TEXT_BUFFER_CHARS = 8000;
@@ -887,6 +892,25 @@
     const NODE_LOG_TAIL_LINES = 160;
     const respondedApprovals = new Set();
     const initialData = readInitialData();
+    const TRACK_TOPICS = [
+      "session/state",
+      "audio/level",
+      "vad/activity",
+      "vad/turn",
+      "asr/control",
+      "asr/transcript",
+      "dialogue/event",
+      "agent/text",
+      "agent/done",
+      "agent/approval",
+      "agent/user-input",
+      "agent/mcp-elicitation",
+      "agent/tool",
+      "tts/text",
+      "barge-in/event",
+      "playback/state",
+      "playback/done",
+    ];
     const TURN_SCOPED_EVENT_TYPES = new Set([
       "session_state",
       "turn",
@@ -902,6 +926,7 @@
       "agent_mcp_elicitation_request",
       "tool_event",
       "tts_text",
+      "barge_in",
       "playback_state",
       "playback_done",
     ]);
@@ -911,19 +936,6 @@
       "transcript_delta",
       "transcript_partial",
       "transcript_final",
-    ]);
-    const ASSISTANT_DISPLAY_EVENT_TYPES = new Set([
-      "session_state",
-      "dialogue_event",
-      "agent_text_delta",
-      "agent_turn_done",
-      "approval_request",
-      "agent_user_input_request",
-      "agent_mcp_elicitation_request",
-      "tool_event",
-      "tts_text",
-      "playback_state",
-      "playback_done",
     ]);
     const CONVERSATION_EVENT_TYPES = new Set([
       "transcript_delta",
@@ -974,8 +986,38 @@
       const element = document.getElementById("initial-data");
       if (!element) return null;
       const raw = element.textContent.trim();
-      if (!raw || raw.startsWith("__FLUENT_AUDIO_INITIAL_STATE__")) return null;
+      if (!raw || raw.startsWith("__FLUENT_DIALOGUE_DORA_INITIAL_STATE__")) return null;
       return JSON.parse(raw);
+    }
+
+    function createTrackProvider(sessionId) {
+      return {
+        sessionId,
+        values: new Map(),
+        reset(nextSessionId) {
+          this.sessionId = nextSessionId;
+          this.values = new Map();
+        },
+        set(topic, value) {
+          this.values.set(topic, value);
+        },
+        delete(topic) {
+          this.values.delete(topic);
+        },
+        useTrack(topic) {
+          return this.values.get(topic) || null;
+        },
+      };
+    }
+
+    function useTrack(topic) {
+      return trackProvider.useTrack(topic);
+    }
+
+    function applyTrackSnapshot(body) {
+      for (const frame of body.tracks || []) {
+        trackProvider.set(frame.topic, frame.event);
+      }
     }
 
     function eventText(item) {
@@ -999,7 +1041,6 @@
     }
 
     function resetDerivedState() {
-      latestEvents = new Map();
       currentDisplayTurnId = null;
       latestTranscriptFinalText = "";
       latestTranscriptPartialText = "";
@@ -1016,9 +1057,15 @@
     }
 
     function clearAssistantDisplay() {
-      for (const eventType of ASSISTANT_DISPLAY_EVENT_TYPES) {
-        latestEvents.delete(eventType);
-      }
+      trackProvider.delete("agent/text");
+      trackProvider.delete("agent/done");
+      trackProvider.delete("agent/approval");
+      trackProvider.delete("agent/user-input");
+      trackProvider.delete("agent/mcp-elicitation");
+      trackProvider.delete("agent/tool");
+      trackProvider.delete("tts/text");
+      trackProvider.delete("playback/state");
+      trackProvider.delete("playback/done");
       rawAgentText = "";
       ttsText = "";
     }
@@ -1078,10 +1125,8 @@
       transcriptDeltaCount = 0;
       transcriptFinalCount = 0;
       asrPhase = "waiting";
-      latestEvents.delete("asr_control");
-      latestEvents.delete("transcript_delta");
-      latestEvents.delete("transcript_partial");
-      latestEvents.delete("transcript_final");
+      trackProvider.delete("asr/control");
+      trackProvider.delete("asr/transcript");
     }
 
     function applyEventItem(item) {
@@ -1091,9 +1136,6 @@
       applyConversationEvent(item);
       const currentTurnEvent = isCurrentDisplayTurn(event);
       const liveAsrEvent = ASR_LIVE_EVENT_TYPES.has(event.event_type);
-      if (currentTurnEvent || liveAsrEvent || !TURN_SCOPED_EVENT_TYPES.has(event.event_type)) {
-        latestEvents.set(event.event_type, event);
-      }
       if (!currentTurnEvent && !liveAsrEvent) return;
       if (event.event_type === "transcript_final") {
         latestTranscriptFinalText = event.text || "";
@@ -1124,10 +1166,6 @@
       if (event.event_type === "tts_text") {
         ttsText = boundedAppend(ttsText, event.text || "");
       }
-    }
-
-    function latestEvent(eventType) {
-      return latestEvents.get(eventType) || null;
     }
 
     function dbfsToMeterPercent(dbfs) {
@@ -1170,12 +1208,13 @@
     }
 
     function renderPipeline() {
-      const activity = latestEvent("audio_activity");
-      const level = latestEvent("audio_level");
-      const turn = latestEvent("turn");
-      const sessionState = latestEvent("session_state");
-      const agentDone = latestEvent("agent_turn_done");
-      const playback = latestEvent("playback_state") || latestEvent("playback_done");
+      const activity = useTrack("vad/activity");
+      const level = useTrack("audio/level");
+      const turn = useTrack("vad/turn");
+      const sessionState = useTrack("session/state");
+      const agentDone = useTrack("agent/done");
+      const bargeIn = useTrack("barge-in/event");
+      const playback = useTrack("playback/state") || useTrack("playback/done");
       const probability = level ? level.speech_probability : activity ? activity.speech_probability : 0;
       const ttsChunkCount = events.reduce((count, item) => count + (item.event.event_type === "tts_text" ? 1 : 0), 0);
       const stages = [
@@ -1208,6 +1247,11 @@
           name: "音声合成",
           state: ttsText ? "on" : "",
           value: `${ttsChunkCount} chunks`,
+        },
+        {
+          name: "割り込み",
+          state: bargeIn ? "on" : "",
+          value: bargeIn ? `${formatProbability(bargeIn.speech_probability)} · ${bargeIn.played_frames}f` : "waiting",
         },
         {
           name: "再生",
@@ -1463,9 +1507,9 @@
         for (const node of nodesInGroup) {
           const item = document.createElement("button");
           item.type = "button";
-          const statusClass = node.status === "running" ? "running" : node.status === "stopped" ? "stopped" : "err";
+          const statusClass = node.status === "running" ? "running" : node.status === "stopped" ? "stopped" : node.status === "unknown" ? "unknown" : "err";
           item.className = `node ${statusClass}${node.node_id === selectedNodeId ? " sel" : ""}`;
-          item.title = node.command || "";
+          item.title = node.command || node.status || "";
           item.onclick = () => selectNodeLog(node.node_id);
           const dot = document.createElement("span");
           dot.className = "d";
@@ -1610,6 +1654,7 @@
 
     function approvalButton(event, decision, label, variant) {
       const button = document.createElement("button");
+      button.type = "button";
       button.className = `approval ${variant}`.trim();
       button.textContent = label;
       button.onclick = () => submitApproval(event, decision).catch((error) => setConnection(error.message));
@@ -1627,7 +1672,11 @@
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify({ decision, scope: "turn" }),
       });
-      if (!response.ok) throw new Error(`approval HTTP ${response.status}`);
+      if (!response.ok) {
+        const body = await response.text();
+        const detail = body.trim();
+        throw new Error(detail ? `approval HTTP ${response.status}: ${detail}` : `approval HTTP ${response.status}`);
+      }
       respondedApprovals.add(approvalKey(event));
       setConnection(`approval ${decision}`);
       renderEvents();
@@ -1638,6 +1687,12 @@
       if (!response.ok) throw new Error(`topic list HTTP ${response.status}`);
       const body = await response.json();
       renderTopics(body.topics || []);
+    }
+
+    async function loadTracks() {
+      const response = await fetch("/api/tracks.json");
+      if (!response.ok) throw new Error(`track snapshot HTTP ${response.status}`);
+      applyTrackSnapshot(await response.json());
     }
 
     function applySnapshotBody(body) {
@@ -1662,6 +1717,7 @@
       if (!initialData) return false;
       applySnapshotBody(initialData.snapshot);
       renderTopics(initialData.topics.topics || []);
+      applyTrackSnapshot(initialData.tracks || { tracks: [] });
       return true;
     }
 
@@ -1670,6 +1726,12 @@
       source = new EventSource(`/api/events.sse?after=${nextEventOffset}`);
       source.onopen = () => setConnection("live");
       source.onerror = () => setConnection("reconnecting");
+      for (const topic of TRACK_TOPICS) {
+        source.addEventListener(topic, (message) => {
+          trackProvider.set(topic, JSON.parse(message.data));
+          scheduleRender();
+        });
+      }
       source.addEventListener("dora-topic-event", (message) => {
         const item = JSON.parse(message.data);
         nextEventOffset = item.global_offset + 1;
@@ -1682,7 +1744,9 @@
 
     async function connectBridgeSession() {
       history.replaceState(null, "", `/?session=${encodeURIComponent(bridgeSessionId)}`);
+      trackProvider.reset(bridgeSessionId);
       await loadSnapshot();
+      await loadTracks();
       await loadTopics();
       openStream();
     }

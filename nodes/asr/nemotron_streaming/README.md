@@ -106,11 +106,11 @@ uv run --extra dev --extra dora python -m ruff check \
 Target-hardware DORA smoke already run:
 
 - Python:
-  `$FLUENT_AUDIO_NEMOTRON_PYTHON`
+  `$FLUENT_DIALOGUE_DORA_NEMOTRON_PYTHON`
 - Model:
-  `$FLUENT_AUDIO_NEMOTRON_MODEL`
+  `$FLUENT_DIALOGUE_DORA_NEMOTRON_MODEL`
 - Audio:
-  `$FLUENT_AUDIO_NEMOTRON_SMOKE_WAV`
+  `$FLUENT_DIALOGUE_DORA_NEMOTRON_SMOKE_WAV`
 - Result:
   `TranscriptFinal(text="The stales")` through
   `raw_pcm_source -> media_graph -> vad -> turn_detector -> asr_control_from_turn -> nemotron_streaming -> transcript_probe`

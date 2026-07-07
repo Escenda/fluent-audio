@@ -1,8 +1,8 @@
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import AsrCancel, AsrStart, AsrStop
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AsrCancel, AsrStart, AsrStop
+from fluent_dialogue_dora.dora import (
     DoraAsrControlFinalMarkerError,
     DoraAsrControlMetadataError,
     decode_asr_control_from_dora,
@@ -11,7 +11,7 @@ from fluent_audio.dora import (
     validate_dora_asr_control_final_marker,
     validate_dora_asr_control_metadata,
 )
-from fluent_audio_contracts.fluent_audio.v1.asr_pb2 import (
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1.asr_pb2 import (
     AsrControl,
     AsrControlStreamFinal,
 )
@@ -37,9 +37,9 @@ def test_asr_start_roundtrips_through_dora_boundary() -> None:
     assert proto.start.start_sample_index == 320
     assert metadata.final is False
     assert metadata.to_dora_metadata() == {
-        "fluent_audio_codec": "protobuf",
-        "fluent_audio_schema_version": "fluent_audio.v1",
-        "fluent_audio_message_type": AsrControl.DESCRIPTOR.full_name,
+        "fluent_dialogue_dora_codec": "protobuf",
+        "fluent_dialogue_dora_schema_version": "fluent_dialogue_dora.v1",
+        "fluent_dialogue_dora_message_type": AsrControl.DESCRIPTOR.full_name,
     }
 
 
@@ -115,7 +115,7 @@ def test_asr_control_rejects_missing_oneof_control() -> None:
 
 def test_asr_control_rejects_missing_transport_metadata() -> None:
     with pytest.raises(DoraAsrControlMetadataError, match="metadata is invalid"):
-        validate_dora_asr_control_metadata({"fluent_audio_codec": "protobuf"})
+        validate_dora_asr_control_metadata({"fluent_dialogue_dora_codec": "protobuf"})
 
 
 def test_asr_control_metadata_model_export_is_transport_frame() -> None:
@@ -127,9 +127,9 @@ def test_asr_control_metadata_model_export_is_transport_frame() -> None:
     final_marker = validate_dora_asr_control_final_marker(payload, metadata)
 
     assert metadata.to_dora_metadata() == {
-        "fluent_audio_codec": "protobuf",
-        "fluent_audio_schema_version": "fluent_audio.v1",
-        "fluent_audio_message_type": AsrControlStreamFinal.DESCRIPTOR.full_name,
+        "fluent_dialogue_dora_codec": "protobuf",
+        "fluent_dialogue_dora_schema_version": "fluent_dialogue_dora.v1",
+        "fluent_dialogue_dora_message_type": AsrControlStreamFinal.DESCRIPTOR.full_name,
     }
     assert final_marker.session_id == "session-1"
 

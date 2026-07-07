@@ -95,11 +95,11 @@ and `mcpServer/elicitation/request` are
 projected as dedicated voice requests and answered only by matching typed DORA
 responses.
 
-Browser approval responses are not DORA inputs. During an approval wait, the
-node waits on the control REST queue by default. `--poll-dora-control-during-approval`
-is an explicit test/debug escape hatch for cancellation experiments only; regular
-graphs should keep it disabled because `node.next()` can surface unrelated DORA
-`ERROR` or `STOP` events while the approval response is being submitted over REST.
+Browser approval responses are not DORA inputs. Codex stdout events are projected
+directly to DORA outputs by the stdout reader, while the DORA input loop remains
+responsible only for incoming turns, cancellations, and typed DORA responses.
+Approval responses are submitted through the control REST endpoint and never
+require the Codex node to poll DORA while waiting for REST input.
 
 Each turn stream must end with exactly one `turn_done`. Missing terminal events,
 events after `turn_done`, thread/turn mismatch, invalid JSON, unsupported

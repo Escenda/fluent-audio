@@ -3,21 +3,60 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MODE="${1:---run}"
+source "${SCRIPT_DIR}/live_session_lifecycle.sh"
 
-if [[ "${MODE}" != "--run" && "${MODE}" != "--write-dataflow" ]]; then
-  echo "usage: $0 [--run|--write-dataflow]" >&2
-  exit 64
-fi
+usage() {
+  echo "usage: $0 [--run|--write-dataflow|--status|--stop|--restart [--run]]" >&2
+}
 
-if ! command -v codex >/dev/null; then
-  echo "missing required command: codex" >&2
-  exit 127
-fi
+LIVE_SESSION_STATE_FILE="${REPO_ROOT}/artifacts/file_live_voice_session/run.env"
+REQUESTED_MODE="${1:---run}"
+RESTART_REQUESTED=0
 
-if [[ "${MODE}" == "--run" && "${FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN:-}" != "1" ]]; then
-  echo "live Codex turn not run: set FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1" >&2
-  exit 64
+case "${REQUESTED_MODE}" in
+  --run | --write-dataflow)
+    if [[ $# -gt 1 ]]; then
+      usage
+      exit 64
+    fi
+    MODE="${REQUESTED_MODE}"
+    ;;
+  --status)
+    if [[ $# -gt 1 ]]; then
+      usage
+      exit 64
+    fi
+    live_session_status
+    exit 0
+    ;;
+  --stop)
+    if [[ $# -gt 1 ]]; then
+      usage
+      exit 64
+    fi
+    live_session_stop
+    exit $?
+    ;;
+  --restart)
+    if [[ $# -gt 2 ]]; then
+      usage
+      exit 64
+    fi
+    MODE="${2:---run}"
+    if [[ "${MODE}" != "--run" ]]; then
+      usage
+      exit 64
+    fi
+    RESTART_REQUESTED=1
+    ;;
+  *)
+    usage
+    exit 64
+    ;;
+esac
+
+if [[ "${RESTART_REQUESTED}" == "1" ]]; then
+  live_session_stop
 fi
 
 cd "${REPO_ROOT}"
@@ -25,27 +64,94 @@ export PYTHONPATH="${REPO_ROOT}/src:${REPO_ROOT}/contracts/python/src${PYTHONPAT
 
 mkdir -p artifacts/file_live_voice_session graphs/out
 
-CODEX_HOME_DIR="${FLUENT_AUDIO_CODEX_HOME:-${REPO_ROOT}/artifacts/codex_home/file_live_voice_session}"
+CODEX_HOME_DIR="${FLUENT_DIALOGUE_DORA_CODEX_HOME:-${REPO_ROOT}/artifacts/codex_home/file_live_voice_session}"
 mkdir -p "${CODEX_HOME_DIR}"
 export CODEX_HOME="${CODEX_HOME_DIR}"
 
-RUNTIME_LOG="${FLUENT_AUDIO_FILE_LIVE_RUNTIME_LOG:-artifacts/file_live_voice_session/runtime.log}"
+DATAFLOW_PATH="${FLUENT_DIALOGUE_DORA_FILE_LIVE_DATAFLOW:-graphs/out/file_live_voice_session.local.yml}"
+SESSION_ID="${FLUENT_DIALOGUE_DORA_FILE_LIVE_SESSION_ID:-file-live-voice-session}"
+USER_TURN_ID="${FLUENT_DIALOGUE_DORA_FILE_LIVE_USER_TURN_ID:-user-turn-000001}"
+ASSISTANT_TURN_ID="${FLUENT_DIALOGUE_DORA_FILE_LIVE_ASSISTANT_TURN_ID:-assistant-turn-000000}"
+WEB_BRIDGE_PORT="${DORA_WEB_BRIDGE_PORT:-18098}"
+CODEX_CONTROL_PORT="${CODEX_CONTROL_PORT:-18198}"
+TTS_PYOPENJTALK_PORT="${TTS_PYOPENJTALK_PORT:-18097}"
+VLLM_BASE_URL="${FLUENT_DIALOGUE_DORA_VLLM_BASE_URL:-http://127.0.0.1:18080/v1}"
+VLLM_MODEL="${FLUENT_DIALOGUE_DORA_CODEX_MODEL:-qwen3.6-27b-mtp-pi-tune-nvfp4}"
+VLLM_PROVIDER="${FLUENT_DIALOGUE_DORA_CODEX_MODEL_PROVIDER:-vllm_local}"
+VLLM_WIRE_API="${FLUENT_DIALOGUE_DORA_CODEX_WIRE_API:-responses}"
+export VLLM_API_KEY="${VLLM_API_KEY:-dummy}"
+
+RUNTIME_LOG="${FLUENT_DIALOGUE_DORA_FILE_LIVE_RUNTIME_LOG:-artifacts/file_live_voice_session/runtime.log}"
 RUNTIME_LOG_RESOLVED="$(
   python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${RUNTIME_LOG}"
 )"
+DATAFLOW_PATH_RESOLVED="$(
+  python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${DATAFLOW_PATH}"
+)"
 if [[ "${MODE}" != "--write-dataflow" ]]; then
+  if live_session_start_guard; then
+    :
+  else
+    guard_status=$?
+    if [[ "${guard_status}" -eq 75 ]]; then
+      exit 0
+    fi
+    exit "${guard_status}"
+  fi
   : > "${RUNTIME_LOG_RESOLVED}"
   exec > >(tee -a "${RUNTIME_LOG_RESOLVED}") 2>&1
   echo "runtime log: ${RUNTIME_LOG_RESOLVED}"
+  LIVE_SESSION_NAME="file_live_voice_session"
+  LIVE_SESSION_ID="${SESSION_ID}"
+  LIVE_SESSION_MODE="${MODE}"
+  LIVE_SESSION_DATAFLOW="${DATAFLOW_PATH_RESOLVED}"
+  LIVE_SESSION_RUNTIME_LOG="${RUNTIME_LOG_RESOLVED}"
+  LIVE_SESSION_WEB_BRIDGE_PORT="${WEB_BRIDGE_PORT}"
+  LIVE_SESSION_CODEX_CONTROL_PORT="${CODEX_CONTROL_PORT}"
+  LIVE_SESSION_TTS_PORT="${TTS_PYOPENJTALK_PORT}"
+  LIVE_SESSION_VLLM_BASE_URL="${VLLM_BASE_URL}"
+  LIVE_SESSION_DORA_PID=""
+  LIVE_SESSION_DORA_PGID=""
+  LIVE_SESSION_DORA_SID=""
+  LIVE_SESSION_TTS_SERVER_PID=""
+  LIVE_SESSION_TTS_SERVER_PGID=""
+  LIVE_SESSION_TTS_SERVER_SID=""
+  LIVE_SESSION_STATE_ACTIVE=1
+  cleanup() {
+    local status=$?
+    trap - EXIT
+    if [[ "${LIVE_SESSION_STATE_ACTIVE:-0}" == "1" ]]; then
+      if live_session_stop_current; then
+        live_session_clear_state
+      else
+        echo "file live session processes remain; state retained: ${LIVE_SESSION_STATE_FILE}" >&2
+      fi
+    fi
+    return "${status}"
+  }
+  trap cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  live_session_write_state
+fi
+
+if ! command -v codex >/dev/null; then
+  echo "missing required command: codex" >&2
+  exit 127
+fi
+
+if [[ "${MODE}" == "--run" && "${FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN:-}" != "1" ]]; then
+  echo "live Codex turn not run: set FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1" >&2
+  exit 64
 fi
 
 NEMOTRON_VENV_WRAPPER="graphs/out/nemotron_venv_python.sh"
 if [[ ! -f "${NEMOTRON_VENV_WRAPPER}" ]]; then
-  echo "missing ${NEMOTRON_VENV_WRAPPER}; build the fluent_audio nemotron_streaming_asr venv first" >&2
+  echo "missing ${NEMOTRON_VENV_WRAPPER}; build the fluent_dialogue_dora nemotron_streaming_asr venv first" >&2
   exit 66
 fi
 
-NEMOTRON_MODEL_PATH="${FLUENT_AUDIO_NEMOTRON_MODEL_PATH:-../daihen-physical-ai.audio/data/models/fluent_audio/nemotron-3.5-asr-streaming-0.6b/nemotron-3.5-asr-streaming-0.6b.nemo}"
+NEMOTRON_MODEL_PATH="${FLUENT_DIALOGUE_DORA_NEMOTRON_MODEL_PATH:-data/models/fluent_dialogue_dora/nemotron-3.5-asr-streaming-0.6b/nemotron-3.5-asr-streaming-0.6b.nemo}"
 if [[ ! -s "${NEMOTRON_MODEL_PATH}" ]]; then
   echo "missing Nemotron model: ${NEMOTRON_MODEL_PATH}" >&2
   exit 66
@@ -59,13 +165,13 @@ import wave
 
 repo_root = Path.cwd()
 raw_path = repo_root / "tests/fixtures/vad/harvard_16k_mono_32768f.s16le"
-turn_count_text = os.environ.get("FLUENT_AUDIO_FILE_LIVE_TURN_COUNT", "1")
+turn_count_text = os.environ.get("FLUENT_DIALOGUE_DORA_FILE_LIVE_TURN_COUNT", "1")
 inter_turn_silence_frames_text = os.environ.get(
-    "FLUENT_AUDIO_FILE_LIVE_INTER_TURN_SILENCE_FRAMES",
+    "FLUENT_DIALOGUE_DORA_FILE_LIVE_INTER_TURN_SILENCE_FRAMES",
     "20000",
 )
 tail_silence_frames_text = os.environ.get(
-    "FLUENT_AUDIO_FILE_LIVE_TAIL_SILENCE_FRAMES",
+    "FLUENT_DIALOGUE_DORA_FILE_LIVE_TAIL_SILENCE_FRAMES",
     "20000",
 )
 try:
@@ -75,7 +181,7 @@ try:
 except ValueError as exc:
     raise SystemExit("file live turn/silence counts must be integers") from exc
 if turn_count < 1:
-    raise SystemExit("FLUENT_AUDIO_FILE_LIVE_TURN_COUNT must be positive")
+    raise SystemExit("FLUENT_DIALOGUE_DORA_FILE_LIVE_TURN_COUNT must be positive")
 if inter_turn_silence_frames < 0 or tail_silence_frames < 0:
     raise SystemExit("file live silence frame counts must be non-negative")
 
@@ -108,23 +214,11 @@ PY
 )"
 echo "${INPUT_WAV_PATH}"
 
-DATAFLOW_PATH="${FLUENT_AUDIO_FILE_LIVE_DATAFLOW:-graphs/out/file_live_voice_session.local.yml}"
-SESSION_ID="${FLUENT_AUDIO_FILE_LIVE_SESSION_ID:-file-live-voice-session}"
-USER_TURN_ID="${FLUENT_AUDIO_FILE_LIVE_USER_TURN_ID:-user-turn-000001}"
-ASSISTANT_TURN_ID="${FLUENT_AUDIO_FILE_LIVE_ASSISTANT_TURN_ID:-assistant-turn-000000}"
-WEB_BRIDGE_PORT="${DORA_WEB_BRIDGE_PORT:-18098}"
-CODEX_CONTROL_PORT="${CODEX_CONTROL_PORT:-18198}"
-TTS_PYOPENJTALK_PORT="${TTS_PYOPENJTALK_PORT:-18097}"
-VLLM_BASE_URL="${FLUENT_AUDIO_VLLM_BASE_URL:-http://127.0.0.1:18080/v1}"
-VLLM_MODEL="${FLUENT_AUDIO_CODEX_MODEL:-qwen3-coder-30b-a3b-nvfp4}"
-VLLM_PROVIDER="${FLUENT_AUDIO_CODEX_MODEL_PROVIDER:-vllm_local}"
-export VLLM_API_KEY="${VLLM_API_KEY:-dummy}"
-
 NEMOTRON_MODEL_RESOLVED="$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${NEMOTRON_MODEL_PATH}")"
 INPUT_WAV_PATH_RESOLVED="$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${INPUT_WAV_PATH}")"
-FILE_LIVE_TURN_COUNT="${FLUENT_AUDIO_FILE_LIVE_TURN_COUNT:-1}"
+FILE_LIVE_TURN_COUNT="${FLUENT_DIALOGUE_DORA_FILE_LIVE_TURN_COUNT:-1}"
 
-python - "${DATAFLOW_PATH}" "${SESSION_ID}" "${USER_TURN_ID}" "${ASSISTANT_TURN_ID}" "${WEB_BRIDGE_PORT}" "${CODEX_CONTROL_PORT}" "${TTS_PYOPENJTALK_PORT}" "${VLLM_BASE_URL}" "${VLLM_MODEL}" "${VLLM_PROVIDER}" "${NEMOTRON_MODEL_RESOLVED}" "${INPUT_WAV_PATH_RESOLVED}" "${FILE_LIVE_TURN_COUNT}" "${RUNTIME_LOG_RESOLVED}" <<'PY'
+python - "${DATAFLOW_PATH}" "${SESSION_ID}" "${USER_TURN_ID}" "${ASSISTANT_TURN_ID}" "${WEB_BRIDGE_PORT}" "${CODEX_CONTROL_PORT}" "${TTS_PYOPENJTALK_PORT}" "${VLLM_BASE_URL}" "${VLLM_MODEL}" "${VLLM_PROVIDER}" "${VLLM_WIRE_API}" "${NEMOTRON_MODEL_RESOLVED}" "${INPUT_WAV_PATH_RESOLVED}" "${FILE_LIVE_TURN_COUNT}" "${RUNTIME_LOG_RESOLVED}" <<'PY'
 from __future__ import annotations
 
 import json
@@ -176,10 +270,10 @@ def remove_node_blocks(lines: list[str], node_ids: set[str]) -> list[str]:
 
 
 def output_device_args() -> list[str]:
-    use_default = os.environ.get("FLUENT_AUDIO_USE_DEFAULT_OUTPUT_DEVICE") == "1"
-    device_name = os.environ.get("FLUENT_AUDIO_CPAL_OUTPUT_DEVICE_NAME")
+    use_default = os.environ.get("FLUENT_DIALOGUE_DORA_USE_DEFAULT_OUTPUT_DEVICE") == "1"
+    device_name = os.environ.get("FLUENT_DIALOGUE_DORA_CPAL_OUTPUT_DEVICE_NAME")
     device_id = _device_id_or_default(
-        env_name="FLUENT_AUDIO_CPAL_OUTPUT_DEVICE_ID",
+        env_name="FLUENT_DIALOGUE_DORA_CPAL_OUTPUT_DEVICE_ID",
         default_value="alsa:hw:CARD=S3,DEV=0",
         device_name=device_name,
         use_default=use_default,
@@ -233,22 +327,23 @@ tts_port = sys.argv[7]
 vllm_base_url = sys.argv[8]
 vllm_model = sys.argv[9]
 vllm_provider = sys.argv[10]
-nemotron_model_path = sys.argv[11]
-input_wav_path = sys.argv[12]
+vllm_wire_api = sys.argv[11]
+nemotron_model_path = sys.argv[12]
+input_wav_path = sys.argv[13]
 try:
-    file_live_turn_count = int(sys.argv[13])
+    file_live_turn_count = int(sys.argv[14])
 except ValueError as exc:
     raise SystemExit("file live turn count must be an integer") from exc
 if file_live_turn_count < 1:
     raise SystemExit("file live turn count must be positive")
-runtime_log_path = sys.argv[14]
-asr_audio_queue_size = positive_int_env("FLUENT_AUDIO_ASR_AUDIO_QUEUE_SIZE", "4096")
+runtime_log_path = sys.argv[15]
+asr_audio_queue_size = positive_int_env("FLUENT_DIALOGUE_DORA_ASR_AUDIO_QUEUE_SIZE", "4096")
 
-cwd = os.environ.get("FLUENT_AUDIO_CODEX_CWD", "/tmp/fluent-audio-codex-empty-cwd")
+cwd = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_CWD", "/tmp/fluent-dialogue-dora-codex-empty-cwd")
 Path(cwd).mkdir(parents=True, exist_ok=True)
 
 developer_instructions = os.environ.get(
-    "FLUENT_AUDIO_VOICE_DEVELOPER_INSTRUCTIONS",
+    "FLUENT_DIALOGUE_DORA_VOICE_DEVELOPER_INSTRUCTIONS",
     (
         "あなたは音声対話でユーザーに聞こえる返答本文だけを書きます。"
         "返答本文はTTSで即座に読み上げられるため、自然な短い日本語にしてください。"
@@ -319,7 +414,7 @@ command_file = write_payload(
             "-c",
             f"model_providers.{vllm_provider}.env_key=\"VLLM_API_KEY\"",
             "-c",
-            f"model_providers.{vllm_provider}.wire_api=\"responses\"",
+            f"model_providers.{vllm_provider}.wire_api={json.dumps(vllm_wire_api)}",
         ]
     )
     + "\n",
@@ -330,17 +425,17 @@ codex_args = [
     "../../nodes/dialogue_engine/codex_app_server/main.py",
     "--dora",
     "--timeout-seconds",
-    os.environ.get("FLUENT_AUDIO_CODEX_TIMEOUT_SECONDS", "240"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_TIMEOUT_SECONDS", "240"),
     "--approval-response-timeout-seconds",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_TIMEOUT_SECONDS", "30"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_TIMEOUT_SECONDS", "900"),
     "--cwd",
     cwd,
     "--sandbox",
-    os.environ.get("FLUENT_AUDIO_CODEX_SANDBOX", "read-only"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_SANDBOX", "read-only"),
     "--approval-policy",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_POLICY", "never"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_POLICY", "never"),
     "--approvals-reviewer",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVALS_REVIEWER", "user"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVALS_REVIEWER", "user"),
     "--model",
     vllm_model,
     "--model-provider",
@@ -384,7 +479,7 @@ lines: list[str] = [
             "--expected-channels",
             "1",
             "--replay-speed",
-            os.environ.get("FLUENT_AUDIO_FILE_REPLAY_SPEED", "1.0"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_FILE_REPLAY_SPEED", "1.0"),
         ]
     ),
     "    outputs:",
@@ -455,9 +550,9 @@ lines: list[str] = [
             "--output-stream-id",
             "activity/vad/asr",
             "--threshold",
-            os.environ.get("FLUENT_AUDIO_VAD_THRESHOLD", "0.5"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_VAD_THRESHOLD", "0.5"),
             "--level-period-windows",
-            os.environ.get("FLUENT_AUDIO_VAD_LEVEL_PERIOD_WINDOWS", "8"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_VAD_LEVEL_PERIOD_WINDOWS", "8"),
         ]
     ),
     "    inputs:",
@@ -486,7 +581,7 @@ lines: list[str] = [
             "--output-stream-id",
             f"turn/{session_id}",
             "--end-silence-frames",
-            os.environ.get("FLUENT_AUDIO_TURN_END_SILENCE_FRAMES", "12000"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_TURN_END_SILENCE_FRAMES", "12000"),
         ]
     ),
     "    inputs:",
@@ -512,7 +607,7 @@ lines: list[str] = [
             "--output-audio-stream-id",
             "audio/media_graph/asr",
             "--asr-prebuffer-frames",
-            os.environ.get("FLUENT_AUDIO_ASR_PREBUFFER_FRAMES", "16000"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_ASR_PREBUFFER_FRAMES", "16000"),
             "--output-drain-seconds",
             "5.0",
         ]
@@ -542,11 +637,11 @@ lines: list[str] = [
             "--output-stream-id",
             f"transcript/{session_id}",
             "--prebuffer-frames",
-            os.environ.get("FLUENT_AUDIO_NEMOTRON_PREBUFFER_FRAMES", "32768"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_NEMOTRON_PREBUFFER_FRAMES", "32768"),
             "--control-holdback-frames",
-            os.environ.get("FLUENT_AUDIO_NEMOTRON_CONTROL_HOLDBACK_FRAMES", "4096"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_NEMOTRON_CONTROL_HOLDBACK_FRAMES", "4096"),
             "--late-stop-tolerance-frames",
-            os.environ.get("FLUENT_AUDIO_NEMOTRON_LATE_STOP_TOLERANCE_FRAMES", "16000"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_NEMOTRON_LATE_STOP_TOLERANCE_FRAMES", "16000"),
             "--sample-rate-hz",
             "16000",
             "--channels",
@@ -560,9 +655,9 @@ lines: list[str] = [
             "--model-name",
             nemotron_model_path,
             "--target-lang",
-            os.environ.get("FLUENT_AUDIO_ASR_TARGET_LANG", "en-US"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_ASR_TARGET_LANG", "en-US"),
             "--att-context-right-frames",
-            os.environ.get("FLUENT_AUDIO_NEMOTRON_ATT_CONTEXT_RIGHT_FRAMES", "3"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_NEMOTRON_ATT_CONTEXT_RIGHT_FRAMES", "3"),
         ]
     ),
     "    inputs:",
@@ -589,7 +684,7 @@ lines: list[str] = [
             session_id,
             "--stream-id",
             f"transcript/{session_id}",
-            "--expected-min-deltas",
+            "--expected-min-partials",
             "0",
             "--expected-finals",
             "1",
@@ -910,17 +1005,17 @@ lines: list[str] = [
             "--channel-layout",
             "interleaved",
             "--buffer-size-frames",
-            os.environ.get("FLUENT_AUDIO_OUTPUT_BUFFER_SIZE_FRAMES", "480"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_OUTPUT_BUFFER_SIZE_FRAMES", "480"),
             "--queue-capacity-chunks",
-            os.environ.get("FLUENT_AUDIO_OUTPUT_QUEUE_CAPACITY_CHUNKS", "128"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_OUTPUT_QUEUE_CAPACITY_CHUNKS", "128"),
             "--startup-buffer-chunks",
-            os.environ.get("FLUENT_AUDIO_OUTPUT_STARTUP_BUFFER_CHUNKS", "64"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_OUTPUT_STARTUP_BUFFER_CHUNKS", "64"),
             "--source-id",
             "speaker_media_graph",
             "--stream-id",
             "speaker/cpal",
             "--completion-timeout-ms",
-            os.environ.get("FLUENT_AUDIO_OUTPUT_COMPLETION_TIMEOUT_MS", "30000"),
+            os.environ.get("FLUENT_DIALOGUE_DORA_OUTPUT_COMPLETION_TIMEOUT_MS", "30000"),
         ]
     ),
     "    inputs:",
@@ -937,6 +1032,8 @@ lines: list[str] = [
             "./nemotron_venv_python.sh",
             "../../bridges/dora_web_bridge/main.py",
             "--dora",
+            "--dataflow",
+            str(output_path.resolve()),
             "--session-id",
             session_id,
             "--port",
@@ -1101,14 +1198,6 @@ print(Path(dict_dir))
 PY
 )"
 
-TTS_SERVER_PID=""
-cleanup() {
-  if [[ -n "${TTS_SERVER_PID}" ]] && kill -0 "${TTS_SERVER_PID}" 2>/dev/null; then
-    kill "${TTS_SERVER_PID}" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
-
 uv run --extra dev --extra dora --extra tts python nodes/tts/tts_pyopenjtalk_server/main.py \
   --port "${TTS_PYOPENJTALK_PORT}" \
   --openjtalk-dict-dir "${OPENJTALK_DICT_DIR}" \
@@ -1116,6 +1205,10 @@ uv run --extra dev --extra dora --extra tts python nodes/tts/tts_pyopenjtalk_ser
   --audio-stream-id tts/pyopenjtalk \
   --chunk-frames 12000 &
 TTS_SERVER_PID="$!"
+LIVE_SESSION_TTS_SERVER_PID="${TTS_SERVER_PID}"
+LIVE_SESSION_TTS_SERVER_PGID="$(live_session_pgid "${TTS_SERVER_PID}")"
+LIVE_SESSION_TTS_SERVER_SID="$(live_session_sid "${TTS_SERVER_PID}")"
+live_session_write_state
 
 python - "${TTS_PYOPENJTALK_PORT}" <<'PY'
 from __future__ import annotations
@@ -1149,7 +1242,7 @@ wait_for_port(int(sys.argv[1]))
 PY
 
 echo "web dashboard: http://127.0.0.1:${WEB_BRIDGE_PORT}/?session=${SESSION_ID}" >&2
-uvx --from dora-rs-cli dora run "${DATAFLOW_PATH}" --uv
+live_session_run_dora uvx --from dora-rs-cli dora run "${DATAFLOW_PATH}" --uv
 
 if [[ "${FILE_LIVE_TURN_COUNT}" != "1" ]]; then
   python - "${WEB_BRIDGE_PORT}" "${FILE_LIVE_TURN_COUNT}" <<'PY'

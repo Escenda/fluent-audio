@@ -1,14 +1,14 @@
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AudioChunk,
     AudioFormat,
     SynthesizedAudioChunk,
     TtsTextChunk,
     TtsTextStreamFinal,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraSynthesizedAudioFinalMarkerError,
     DoraSynthesisMetadataError,
     DoraTtsTextStreamFinalMarkerError,

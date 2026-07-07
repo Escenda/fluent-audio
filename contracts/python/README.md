@@ -11,5 +11,5 @@ uv run --with grpcio-tools --with protobuf tools/generate_contracts/python.py
 Use from Python:
 
 ```python
-from fluent_audio_contracts.fluent_audio.v1.audio_pb2 import AudioFrame
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1.audio_pb2 import AudioFrame
 ```

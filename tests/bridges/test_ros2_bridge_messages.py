@@ -1,6 +1,6 @@
 import pytest
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentApprovalRequest,
     AgentCancelRequest,
     AgentTextDelta,

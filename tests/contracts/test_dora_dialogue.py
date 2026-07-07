@@ -1,7 +1,7 @@
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentApprovalRequest,
     AgentCancelRequest,
     AgentMcpElicitationRequest,
@@ -17,7 +17,7 @@ from fluent_audio.contracts import (
     DialogueEvent,
     DialogueInput,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraDialogueMetadataError,
     decode_agent_approval_request_from_dora,
     decode_agent_cancel_request_from_dora,

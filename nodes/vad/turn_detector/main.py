@@ -15,8 +15,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import TurnEvent, VoiceActivityEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TurnEvent, VoiceActivityEvent
+from fluent_dialogue_dora.dora import (
     DoraVoiceActivityMetadata,
     decode_voice_activity_event_from_dora,
     encode_turn_event_for_dora,
@@ -145,7 +145,7 @@ def run_turn_detector_events(
                 final_sample_index=final_sample_index,
             )
         if event_type != "INPUT":
-            raise TurnDetectorNodeError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         if input_id != "activity":

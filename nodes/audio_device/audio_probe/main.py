@@ -10,8 +10,8 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import AudioChunk, AudioFormat, require_contiguous_audio_chunks
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioChunk, AudioFormat, require_contiguous_audio_chunks
+from fluent_dialogue_dora.dora import (
     decode_audio_chunk_from_dora,
     validate_dora_audio_final_marker,
     validate_dora_audio_metadata,

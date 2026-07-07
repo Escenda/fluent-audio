@@ -4,8 +4,8 @@ Status: source and sink green; offline dataflow yellow.
 
 Review target:
 
-- `src/fluent_audio/dora/audio.py`
-- `src/fluent_audio/offline/raw_pcm.py`
+- `src/fluent_dialogue_dora/dora/audio.py`
+- `src/fluent_dialogue_dora/offline/raw_pcm.py`
 - `nodes/audio_device/raw_pcm_source/main.py`
 - `nodes/audio_device/raw_pcm_sink/main.py`
 - `graphs/offline_roundtrip.yml`
@@ -30,7 +30,7 @@ uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/aud
 Result: 64 passed.
 
 ```bash
-uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/audio_device tests/nodes/audio_device
+uv run --extra dev --extra dora python -m ruff check src/fluent_dialogue_dora/offline src/fluent_dialogue_dora/dora nodes/audio_device tests/nodes/audio_device
 ```
 
 Result: passed.
@@ -49,8 +49,8 @@ command -v dora
 Result: `dora` CLI unavailable.
 
 ```bash
-grep -R -n -E 'Any|dict\[str|object|type: ignore' nodes/audio_device src/fluent_audio/offline src/fluent_audio/dora tests/nodes/audio_device
-grep -R -n -E '"sequence"|sequence=' nodes/audio_device src/fluent_audio/offline src/fluent_audio/dora tests/nodes/audio_device
+grep -R -n -E 'Any|dict\[str|object|type: ignore' nodes/audio_device src/fluent_dialogue_dora/offline src/fluent_dialogue_dora/dora tests/nodes/audio_device
+grep -R -n -E '"sequence"|sequence=' nodes/audio_device src/fluent_dialogue_dora/offline src/fluent_dialogue_dora/dora tests/nodes/audio_device
 ```
 
 Result: no matches.

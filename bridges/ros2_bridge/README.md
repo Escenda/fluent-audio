@@ -1,12 +1,12 @@
 # ros2_bridge
 
-Bridges fluent-audio core events, commands, status, and optional audio taps into ROS2.
+Bridges fluent-dialogue-dora core events, commands, status, and optional audio taps into ROS2.
 
 The core runtime itself must not become a ROS2 graph.
 
 ## Boundary Contract
 
-The bridge projects validated fluent-audio contracts into ROS2-facing messages.
+The bridge projects validated fluent-dialogue-dora contracts into ROS2-facing messages.
 It does not reimplement VAD, ASR, turn detection, dialogue, TTS, playback, or
 media graph logic.
 
@@ -24,7 +24,7 @@ Implemented pure projection models:
 - `Ros2PlaybackState`, `Ros2PlaybackDone`.
 
 `user_turn_id` is a string at the ROS2-facing boundary. The older
-`fluent_audio_ros2` `uint32 user_turn_id` shape is not preserved because the new
+`fluent_dialogue_dora_ros2` `uint32 user_turn_id` shape is not preserved because the new
 runtime contract uses stable string identifiers.
 
 ## Pure Runner
@@ -62,7 +62,7 @@ transport closes or the event stream ends before that explicit final marker.
 - `playback_command`
 
 These paths convert ROS2-facing Pydantic projections back into existing
-fluent-audio contracts and DORA metadata. They do not define new command
+fluent-dialogue-dora contracts and DORA metadata. They do not define new command
 semantics.
 
 Agent approval responses are intentionally not DORA ingress. Approval requests
@@ -72,12 +72,12 @@ REST so Web and non-Web operators share one explicit control boundary.
 ## rclpy Sidecar
 
 `sidecar.py` is the real ROS2 generated-message boundary. It publishes DORA
-inputs to `/fluent_audio/*` ROS2 topics and subscribes to explicit
-`/fluent_audio/in/*` command topics for DORA ingress. This file imports
-`rclpy` and `fluent_audio_interfaces`, so it is intentionally outside the
+inputs to `/fluent_dialogue_dora/*` ROS2 topics and subscribes to explicit
+`/fluent_dialogue_dora/in/*` command topics for DORA ingress. This file imports
+`rclpy` and `fluent_dialogue_dora_interfaces`, so it is intentionally outside the
 normal rclpy-free unit-test path.
 
-`bridges/ros2_bridge/fluent_audio_interfaces` defines the intended ROS2 message package,
+`bridges/ros2_bridge/fluent_dialogue_dora_interfaces` defines the intended ROS2 message package,
 including agent cancel ingress messages. ASR control and playback command ingress
 reuse the same explicit command message contracts that are projected outward on
 their observation topics.

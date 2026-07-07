@@ -9,7 +9,7 @@ Read these files first:
 - `docs/architecture/raw-pcm-io-implementation-task.md`
 - `docs/architecture/raw-pcm-io-review-gate.md`
 - `docs/architecture/raw-pcm-io-implementation-review.md`, if it exists
-- `src/fluent_audio/contracts/`
+- `src/fluent_dialogue_dora/contracts/`
 
 ## Current State
 
@@ -36,8 +36,8 @@ Your output will be reviewed against [raw-pcm-io-review-gate.md](raw-pcm-io-revi
 
 - `nodes/audio_device/raw_pcm_source/`
 - `nodes/audio_device/raw_pcm_sink/`
-- `src/fluent_audio/offline/`
-- `src/fluent_audio/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
+- `src/fluent_dialogue_dora/offline/`
+- `src/fluent_dialogue_dora/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
 - `graphs/offline_roundtrip.yml`
 - `graphs/README.md`
 - `tests/nodes/audio_device/`
@@ -49,7 +49,7 @@ Your output will be reviewed against [raw-pcm-io-review-gate.md](raw-pcm-io-revi
 
 Do not touch:
 
-- `src/fluent_audio/contracts/`
+- `src/fluent_dialogue_dora/contracts/`
 - CPAL, media graph, perception, synthesis, interaction, agent, or bridge nodes
 - `pyproject.toml`, unless a dependency is truly required and explicitly justified
 
@@ -59,7 +59,7 @@ Do not touch:
 
 ```bash
 uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/audio_device
-uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/audio_device tests/nodes/audio_device
+uv run --extra dev --extra dora python -m ruff check src/fluent_dialogue_dora/offline src/fluent_dialogue_dora/dora nodes/audio_device tests/nodes/audio_device
 uv run --extra dora python -c "from dora import Node; print(Node)"
 ```
 
@@ -77,7 +77,7 @@ If `dora` CLI is unavailable, do not mark `offline_roundtrip_dataflow` Green. Re
 ## Non-Negotiable Rules
 
 - Do not define a parallel audio payload shape.
-- Use `AudioChunk`, `AudioFormat`, `SampleFormat`, and `ChannelLayout` from `fluent_audio.contracts`.
+- Use `AudioChunk`, `AudioFormat`, `SampleFormat`, and `ChannelLayout` from `fluent_dialogue_dora.contracts`.
 - Do not infer format from file extension, payload length, file name, or content.
 - Do not decode, resample, channel-convert, normalize, pad, trim, or fill audio.
 - Do not create parent directories implicitly in the sink.

@@ -11,5 +11,5 @@ cargo test --manifest-path contracts/rust/Cargo.toml
 Use from Rust:
 
 ```rust
-use fluent_audio_contracts::fluent_audio::v1::AudioFrame;
+use fluent_dialogue_dora_contracts::fluent_dialogue_dora::v1::AudioFrame;
 ```

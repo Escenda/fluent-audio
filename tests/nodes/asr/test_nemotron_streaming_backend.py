@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from fluent_audio.contracts import AsrStop
+from fluent_dialogue_dora.contracts import AsrStop
 import nodes.asr.nemotron_streaming.backend as backend_module
 from nodes.asr.nemotron_streaming.backend import (
     DEFAULT_NEMOTRON_MODEL_NAME,

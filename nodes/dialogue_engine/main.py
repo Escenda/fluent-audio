@@ -22,7 +22,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentApprovalRequest,
     AgentCancelRequest,
     AgentMcpElicitationRequest,
@@ -31,38 +31,62 @@ from fluent_audio.contracts import (
     AgentTurnDone,
     AgentTurnRequest,
     AgentUserInputRequest,
+    BargeInEvent,
     DialogueEvent,
     DialogueInput,
+    PlaybackControlFlush,
     PlaybackDone,
+    PlaybackState,
+    PlaybackStop,
     TranscriptFinal,
     TtsTextChunk,
     TtsTextStreamFinal,
     TurnIds,
     VoiceSessionEvent,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
+    PlaybackCommandEvent,
     decode_agent_runtime_event_from_dora,
+    decode_barge_in_event_from_dora,
     decode_dialogue_input_from_dora,
     decode_playback_done_from_dora,
+    decode_playback_state_from_dora,
     decode_transcript_final_from_dora,
     encode_agent_cancel_request_for_dora,
     encode_agent_turn_request_for_dora,
     encode_dialogue_event_for_dora,
+    encode_playback_command_for_dora,
+    encode_playback_control_command_for_dora,
     encode_tts_text_chunk_for_dora,
     encode_tts_text_stream_final_marker_for_dora,
     encode_voice_session_event_for_dora,
     validate_dora_agent_runtime_event_metadata,
+    validate_dora_barge_in_metadata,
     validate_dora_dialogue_input_metadata,
     validate_dora_playback_done_metadata,
+    validate_dora_playback_state_metadata,
     validate_dora_transcript_metadata,
     validate_dora_transcript_stream_final_marker,
 )
-from fluent_audio_contracts.fluent_audio.v1 import dialogue_pb2 as dialogue_pb
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1 import dialogue_pb2 as dialogue_pb
 
 DEFAULT_DORA_OUTPUT_DRAIN_SECONDS = 0.2
 DEFAULT_ASSISTANT_TURN_PREFIX = "assistant-turn-"
 DEFAULT_TTS_REQUEST_PREFIX = "tts-"
 DEFAULT_CHUNK_DELIMITERS = ".!?。！？、，,\n"
+DEFAULT_PLAYBACK_CONTROL_STREAM_ID = "speaker/cpal"
+DEFAULT_PLAYBACK_FADE_OUT_MS = 15
+# pyopenjtalk synthesizes at 48 kHz; PlaybackState.played_frames are TTS-rate
+# mono frames, so frames / rate gives the seconds the user actually heard.
+DEFAULT_TTS_SAMPLE_RATE_HZ = 48000
+# Rough Japanese speaking rate for mapping heard seconds to a heard character
+# count. Only needs to be good enough that Codex does not assume the un-played
+# remainder was heard.
+DEFAULT_TTS_CHARS_PER_SECOND = 7.0
+HEARD_PREFIX_NOTE_TEMPLATE = (
+    "（注: 前の返答は読み上げの途中でユーザーに遮られました。"
+    "ユーザーが実際に聞いたのはおおよそ「{heard}」までです。）\n"
+)
 _FENCED_CODE_PATTERN = re.compile(r"```[\s\S]*?```")
 _INLINE_CODE_PATTERN = re.compile(r"`([^`\n]+)`")
 _MARKDOWN_LINE_PREFIX_PATTERN = re.compile(r"(?m)^\s{0,3}(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)")
@@ -94,6 +118,13 @@ class DialogueEngineConfig(BaseModel):
     )
     tts_request_prefix: str = Field(default=DEFAULT_TTS_REQUEST_PREFIX, min_length=1)
     chunk_delimiters: str = Field(default=DEFAULT_CHUNK_DELIMITERS, min_length=1)
+    # Device stream id of the speaker sink, target of barge-in flush commands.
+    playback_control_stream_id: str = Field(
+        default=DEFAULT_PLAYBACK_CONTROL_STREAM_ID, min_length=1
+    )
+    playback_fade_out_ms: int = Field(default=DEFAULT_PLAYBACK_FADE_OUT_MS, ge=0)
+    tts_sample_rate_hz: int = Field(default=DEFAULT_TTS_SAMPLE_RATE_HZ, gt=0)
+    tts_chars_per_second: float = Field(default=DEFAULT_TTS_CHARS_PER_SECOND, gt=0.0)
     output_drain_seconds: float = Field(
         default=DEFAULT_DORA_OUTPUT_DRAIN_SECONDS,
         ge=0.0,
@@ -133,6 +164,8 @@ class DialogueEngineOutput(BaseModel):
     dialogue_events: tuple[DialogueEvent, ...] = ()
     tts_text_chunks: tuple[TtsTextChunk, ...] = ()
     tts_text_stream_finals: tuple[TtsTextStreamFinal, ...] = ()
+    playback_commands: tuple[PlaybackCommandEvent, ...] = ()
+    playback_controls: tuple[PlaybackControlFlush, ...] = ()
 
 
 class ActiveAgentTurn(BaseModel):
@@ -154,6 +187,17 @@ class CancelledAgentTurn(BaseModel):
     session_id: str = Field(min_length=1)
     user_turn_id: str = Field(min_length=1)
     assistant_turn_id: str = Field(min_length=1)
+
+
+class TtsRequestRecord(BaseModel):
+    """Spoken text emitted for one TTS request, used to reconstruct, on barge-in,
+    the prefix the user actually heard."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    assistant_turn_id: str = Field(min_length=1)
+    seq: int = Field(ge=0)
+    text: str = Field(min_length=1)
 
 
 class LiteralThinkBlockFilter:
@@ -324,6 +368,18 @@ class DialogueEngineRuntime:
         self._next_session_seq = 0
         self._next_dialogue_seq = 0
         self._next_tts_seq = 0
+        # Latest non-terminal playback request, learned from playback_state. Used
+        # to gate barge-in stop commands so we never stop an already-finished
+        # request (playback_queue would reject that).
+        self._active_playback_request_id: str | None = None
+        self._barge_in_transcript_allowed = False
+        # cpal_sink validates flush seq as strictly increasing for the session.
+        self._next_flush_seq = 0
+        # Spoken text per TTS request for the current assistant turn, so a
+        # barge-in can compute the heard prefix. Cleared when a new turn starts.
+        self._tts_requests: dict[str, TtsRequestRecord] = {}
+        # Heard prefix awaiting delivery as a note on the next user turn.
+        self._pending_heard_prefix: str | None = None
 
     @property
     def idle(self) -> bool:
@@ -331,9 +387,18 @@ class DialogueEngineRuntime:
 
     def handle_transcript_final(self, transcript: TranscriptFinal) -> DialogueEngineOutput:
         self._validate_transcript(transcript)
+        if self._active_playback_request_id is not None and not self._barge_in_transcript_allowed:
+            # ponytail: playback echo guard. If this becomes too strict, replace
+            # it with an explicit ASR segment provenance flag from the AEC path.
+            return DialogueEngineOutput()
+        self._barge_in_transcript_allowed = False
         outputs: list[DialogueEngineOutput] = []
         if self._active_agent_turn is not None:
             outputs.append(self._cancel_active_agent("new_user_turn"))
+
+        # A new turn begins; previous-turn TTS records are no longer needed.
+        self._tts_requests = {}
+        turn_text = self._apply_pending_heard_prefix(transcript.text)
 
         assistant_turn_id = self._next_assistant_turn_id()
         active = ActiveAgentTurn(
@@ -347,7 +412,7 @@ class DialogueEngineRuntime:
             user_turn_id=transcript.user_turn_id,
             assistant_turn_id=assistant_turn_id,
             seq=self._next_agent_turn_seq,
-            text=transcript.text,
+            text=turn_text,
         )
         self._next_agent_turn_seq += 1
         current = DialogueEngineOutput(
@@ -387,6 +452,8 @@ class DialogueEngineRuntime:
         )
 
     def handle_playback_done(self, done: PlaybackDone) -> DialogueEngineOutput:
+        if self._active_playback_request_id == done.request_id:
+            self._active_playback_request_id = None
         return DialogueEngineOutput(
             session_events=(
                 self._session_event_for_turn(
@@ -398,6 +465,56 @@ class DialogueEngineRuntime:
                 ),
             ),
         )
+
+    def handle_playback_state(self, state: PlaybackState) -> DialogueEngineOutput:
+        """Track the active playback request so barge-in can stop it safely."""
+
+        if state.state in ("queued", "playing", "paused"):
+            self._active_playback_request_id = state.request_id
+            self._barge_in_transcript_allowed = False
+        elif self._active_playback_request_id == state.request_id:
+            # stopped / completed / cancelled / failed: nothing left to stop.
+            self._active_playback_request_id = None
+            self._barge_in_transcript_allowed = False
+        return DialogueEngineOutput()
+
+    def handle_barge_in(self, event: BargeInEvent) -> DialogueEngineOutput:
+        """Stop playback, drop the device buffer, and cancel the active turn."""
+
+        outputs: list[DialogueEngineOutput] = []
+        heard_text: str | None = None
+        if self._active_playback_request_id == event.playback_request_id:
+            heard_text = self._compute_heard_text(
+                event.playback_request_id, event.played_frames
+            )
+            stop = PlaybackStop(
+                command="stop",
+                request_id=event.playback_request_id,
+                stream_id=event.playback_stream_id,
+                seq=0,
+            )
+            flush = PlaybackControlFlush(
+                kind="flush",
+                stream_id=self._config.playback_control_stream_id,
+                seq=self._next_flush_seq,
+                fade_out_ms=self._config.playback_fade_out_ms,
+            )
+            self._next_flush_seq += 1
+            self._active_playback_request_id = None
+            self._barge_in_transcript_allowed = True
+            outputs.append(
+                DialogueEngineOutput(
+                    playback_commands=(stop,),
+                    playback_controls=(flush,),
+                )
+            )
+            # Deliver the heard prefix as a note on the next user turn so Codex's
+            # context reflects only what the user actually heard.
+            if heard_text is not None:
+                self._pending_heard_prefix = heard_text
+        # Cancel the agent turn that was being interrupted (no-op if none active).
+        outputs.append(self._cancel_active_agent("barge_in", heard_text=heard_text))
+        return _merge_outputs(tuple(outputs))
 
     def handle_agent_text_delta(self, delta: AgentTextDelta) -> DialogueEngineOutput:
         active = self._active_agent_or_stale(
@@ -662,7 +779,9 @@ class DialogueEngineRuntime:
         if transcript.stream_id != self._config.transcript_stream_id:
             raise DialogueEngineError("transcript stream mismatch")
 
-    def _cancel_active_agent(self, reason: str) -> DialogueEngineOutput:
+    def _cancel_active_agent(
+        self, reason: str, *, heard_text: str | None = None
+    ) -> DialogueEngineOutput:
         active = self._active_agent_turn
         if active is None:
             return DialogueEngineOutput()
@@ -681,6 +800,7 @@ class DialogueEngineRuntime:
             user_turn_id=active.user_turn_id,
             seq=self._next_agent_cancel_seq,
             reason=reason,
+            heard_text=heard_text,
         )
         self._next_agent_cancel_seq += 1
         return DialogueEngineOutput(
@@ -748,8 +868,9 @@ class DialogueEngineRuntime:
         return f"{self._config.assistant_turn_prefix}{self._next_agent_turn_seq:06d}"
 
     def _tts_chunk(self, active: ActiveAgentTurn, text: str, *, is_final: bool) -> TtsTextChunk:
+        request_id = f"{self._config.tts_request_prefix}{self._next_tts_seq:06d}"
         chunk = TtsTextChunk(
-            request_id=f"{self._config.tts_request_prefix}{self._next_tts_seq:06d}",
+            request_id=request_id,
             session_id=active.session_id,
             user_turn_id=active.user_turn_id,
             assistant_turn_id=active.assistant_turn_id,
@@ -757,8 +878,47 @@ class DialogueEngineRuntime:
             text=text,
             is_final=is_final,
         )
+        self._tts_requests[request_id] = TtsRequestRecord(
+            assistant_turn_id=active.assistant_turn_id,
+            seq=self._next_tts_seq,
+            text=text,
+        )
         self._next_tts_seq += 1
         return chunk
+
+    def _compute_heard_text(self, request_id: str, played_frames: int) -> str | None:
+        """Reconstruct what the user heard: fully-played earlier chunks of the
+        same turn plus the heard prefix of the interrupted chunk (time-estimated)."""
+
+        record = self._tts_requests.get(request_id)
+        if record is None:
+            return None
+        earlier = sorted(
+            (
+                other
+                for other in self._tts_requests.values()
+                if other.assistant_turn_id == record.assistant_turn_id
+                and other.seq < record.seq
+            ),
+            key=lambda other: other.seq,
+        )
+        heard = "".join(other.text for other in earlier)
+        heard_seconds = played_frames / self._config.tts_sample_rate_hz
+        heard_chars = round(heard_seconds * self._config.tts_chars_per_second)
+        heard_chars = max(0, min(heard_chars, len(record.text)))
+        heard += record.text[:heard_chars]
+        heard = heard.strip()
+        return heard or None
+
+    def _apply_pending_heard_prefix(self, text: str) -> str:
+        """Prepend a barge-in note (if any) so the next turn's context tells the
+        agent how much of its interrupted reply the user actually heard."""
+
+        heard = self._pending_heard_prefix
+        self._pending_heard_prefix = None
+        if heard is None:
+            return text
+        return HEARD_PREFIX_NOTE_TEMPLATE.format(heard=heard) + text
 
     def _tts_text_stream_final(self, active: ActiveAgentTurn) -> TtsTextStreamFinal:
         marker = TtsTextStreamFinal(
@@ -841,13 +1001,32 @@ class DialogueEngineRuntime:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the fluent-audio dialogue engine.")
+    parser = argparse.ArgumentParser(description="Run the fluent-dialogue-dora dialogue engine.")
     parser.add_argument("--dora", action="store_true")
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--transcript-stream-id", required=True)
     parser.add_argument("--assistant-turn-prefix", default=DEFAULT_ASSISTANT_TURN_PREFIX)
     parser.add_argument("--tts-request-prefix", default=DEFAULT_TTS_REQUEST_PREFIX)
     parser.add_argument("--chunk-delimiters", default=DEFAULT_CHUNK_DELIMITERS)
+    parser.add_argument(
+        "--playback-control-stream-id",
+        default=DEFAULT_PLAYBACK_CONTROL_STREAM_ID,
+    )
+    parser.add_argument(
+        "--playback-fade-out-ms",
+        type=int,
+        default=DEFAULT_PLAYBACK_FADE_OUT_MS,
+    )
+    parser.add_argument(
+        "--tts-sample-rate-hz",
+        type=int,
+        default=DEFAULT_TTS_SAMPLE_RATE_HZ,
+    )
+    parser.add_argument(
+        "--tts-chars-per-second",
+        type=float,
+        default=DEFAULT_TTS_CHARS_PER_SECOND,
+    )
     parser.add_argument(
         "--output-drain-seconds",
         type=float,
@@ -870,6 +1049,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         assistant_turn_prefix=args.assistant_turn_prefix,
         tts_request_prefix=args.tts_request_prefix,
         chunk_delimiters=args.chunk_delimiters,
+        playback_control_stream_id=args.playback_control_stream_id,
+        playback_fade_out_ms=args.playback_fade_out_ms,
+        tts_sample_rate_hz=args.tts_sample_rate_hz,
+        tts_chars_per_second=args.tts_chars_per_second,
         output_drain_seconds=args.output_drain_seconds,
     )
     summary = run_dialogue_engine_events(Node(), config)
@@ -960,11 +1143,13 @@ def run_dialogue_engine_events(
                 "dialogue_input",
                 "agent_event",
                 "playback_done",
+                "playback_state",
+                "barge_in",
             ):
                 raise DialogueEngineError(f"Unexpected DORA input id: {input_id!r}")
             continue
         if event_type != "INPUT":
-            raise DialogueEngineError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         outputs = _handle_input_event(runtime, input_id, event, config)
@@ -1105,6 +1290,16 @@ def _handle_input_event(
         return runtime.handle_playback_done(
             decode_playback_done_from_dora(payload, playback_metadata)
         )
+    if input_id == "playback_state":
+        state_metadata = validate_dora_playback_state_metadata(metadata)
+        return runtime.handle_playback_state(
+            decode_playback_state_from_dora(payload, state_metadata)
+        )
+    if input_id == "barge_in":
+        barge_in_metadata = validate_dora_barge_in_metadata(metadata)
+        return runtime.handle_barge_in(
+            decode_barge_in_event_from_dora(payload, barge_in_metadata)
+        )
     raise DialogueEngineError(f"Unexpected DORA input id: {input_id!r}")
 
 
@@ -1127,6 +1322,12 @@ def _send_outputs(node, outputs: DialogueEngineOutput) -> None:
     for event in outputs.tts_text_stream_finals:
         payload, metadata = encode_tts_text_stream_final_marker_for_dora(event)
         node.send_output("tts_text", payload, metadata=metadata.to_dora_metadata())
+    for command in outputs.playback_commands:
+        payload, metadata = encode_playback_command_for_dora(command)
+        node.send_output("playback_command", payload, metadata=metadata.to_dora_metadata())
+    for control in outputs.playback_controls:
+        payload, metadata = encode_playback_control_command_for_dora(control)
+        node.send_output("playback_control", payload, metadata=metadata.to_dora_metadata())
 
 
 def _spoken_user_input_request(request: AgentUserInputRequest) -> str:
@@ -1141,6 +1342,8 @@ def _merge_outputs(outputs: tuple[DialogueEngineOutput, ...]) -> DialogueEngineO
     dialogue_events: list[DialogueEvent] = []
     tts_text_chunks: list[TtsTextChunk] = []
     tts_text_stream_finals: list[TtsTextStreamFinal] = []
+    playback_commands: list[PlaybackCommandEvent] = []
+    playback_controls: list[PlaybackControlFlush] = []
     for output in outputs:
         agent_turn_requests.extend(output.agent_turn_requests)
         agent_cancel_requests.extend(output.agent_cancel_requests)
@@ -1148,6 +1351,8 @@ def _merge_outputs(outputs: tuple[DialogueEngineOutput, ...]) -> DialogueEngineO
         dialogue_events.extend(output.dialogue_events)
         tts_text_chunks.extend(output.tts_text_chunks)
         tts_text_stream_finals.extend(output.tts_text_stream_finals)
+        playback_commands.extend(output.playback_commands)
+        playback_controls.extend(output.playback_controls)
     return DialogueEngineOutput(
         agent_turn_requests=tuple(agent_turn_requests),
         agent_cancel_requests=tuple(agent_cancel_requests),
@@ -1155,6 +1360,8 @@ def _merge_outputs(outputs: tuple[DialogueEngineOutput, ...]) -> DialogueEngineO
         dialogue_events=tuple(dialogue_events),
         tts_text_chunks=tuple(tts_text_chunks),
         tts_text_stream_finals=tuple(tts_text_stream_finals),
+        playback_commands=tuple(playback_commands),
+        playback_controls=tuple(playback_controls),
     )
 
 

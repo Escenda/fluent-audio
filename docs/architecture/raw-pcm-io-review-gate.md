@@ -10,8 +10,8 @@ Allowed changed paths:
 
 - `nodes/audio_device/raw_pcm_source/`
 - `nodes/audio_device/raw_pcm_sink/`
-- `src/fluent_audio/offline/`
-- `src/fluent_audio/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
+- `src/fluent_dialogue_dora/offline/`
+- `src/fluent_dialogue_dora/dora/`, only for typed DORA payload encode/decode helpers needed by these nodes
 - `graphs/offline_roundtrip.yml`
 - `graphs/README.md`
 - `tests/nodes/audio_device/`
@@ -23,7 +23,7 @@ Allowed changed paths:
 
 Reject or request correction if the candidate changes:
 
-- `src/fluent_audio/contracts/`
+- `src/fluent_dialogue_dora/contracts/`
 - CPAL, media graph, perception, synthesis, interaction, agent, or bridge nodes
 - `pyproject.toml` without a concrete dependency justification
 
@@ -90,7 +90,7 @@ The DORA boundary must keep:
 - typed contract fields as metadata
 - reconstruction/validation through `AudioChunk` at the receiving boundary
 
-If helper code is needed in `src/fluent_audio/dora/`, it must expose typed encode/decode functions and must not leak untyped mappings into deeper runtime code.
+If helper code is needed in `src/fluent_dialogue_dora/dora/`, it must expose typed encode/decode functions and must not leak untyped mappings into deeper runtime code.
 
 ## Test Check
 
@@ -123,9 +123,9 @@ Always run:
 ```bash
 uv run --extra dev python -m pytest tests/nodes/audio_device
 uv run --extra dev python -m ruff check .
-uv run --extra dev python -c "import fluent_audio; print(fluent_audio.__file__)"
-grep -R "Any\\|dict\\[str\\|object\\|type: ignore" -n nodes/audio_device src/fluent_audio/offline src/fluent_audio/dora tests/nodes/audio_device || true
-grep -R '"sequence"\\|sequence=' -n nodes/audio_device src/fluent_audio/offline src/fluent_audio/dora tests/nodes/audio_device || true
+uv run --extra dev python -c "import fluent_dialogue_dora; print(fluent_dialogue_dora.__file__)"
+grep -R "Any\\|dict\\[str\\|object\\|type: ignore" -n nodes/audio_device src/fluent_dialogue_dora/offline src/fluent_dialogue_dora/dora tests/nodes/audio_device || true
+grep -R '"sequence"\\|sequence=' -n nodes/audio_device src/fluent_dialogue_dora/offline src/fluent_dialogue_dora/dora tests/nodes/audio_device || true
 ```
 
 `raw_pcm_source` and `raw_pcm_sink` may become Green only after these checks pass and the review checks above are satisfied.
@@ -134,7 +134,7 @@ For the DORA boundary phase, also run:
 
 ```bash
 uv run --extra dev --extra dora python -m pytest tests/contracts tests/nodes/audio_device
-uv run --extra dev --extra dora python -m ruff check src/fluent_audio/offline src/fluent_audio/dora nodes/audio_device tests/nodes/audio_device
+uv run --extra dev --extra dora python -m ruff check src/fluent_dialogue_dora/offline src/fluent_dialogue_dora/dora nodes/audio_device tests/nodes/audio_device
 uv run --extra dora python -c "from dora import Node; print(Node)"
 uv run --extra dora dora --help
 ```

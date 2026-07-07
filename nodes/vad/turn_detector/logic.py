@@ -6,7 +6,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from fluent_audio.contracts import TurnEvent, VoiceActivityEvent
+from fluent_dialogue_dora.contracts import TurnEvent, VoiceActivityEvent
 
 NonEmptyString = Annotated[str, StringConstraints(min_length=1)]
 

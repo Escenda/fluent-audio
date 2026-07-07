@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from fluent_audio.contracts import TranscriptDelta, TranscriptFinal, TranscriptPartial
+from fluent_dialogue_dora.contracts import TranscriptDelta, TranscriptFinal, TranscriptPartial
 
 
 def test_transcript_models_preserve_turn_ids_and_text() -> None:

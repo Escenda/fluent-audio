@@ -7,7 +7,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AsrCancel,
     AsrStart,
     AsrStop,

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository is the standalone `fluent-audio` runtime.
+This repository is the standalone `fluent-dialogue-dora` runtime.
 
 Core rules:
 
@@ -9,7 +9,7 @@ Core rules:
 - Keep DORA process boundaries separate from in-process media graphs.
 - Keep `contracts/proto` as the schema source of truth for generated contracts.
 - Keep `contracts/python` for generated Python protobuf bindings.
-- Keep `src/fluent_audio` for runtime helpers that are not generated contract code.
+- Keep `src/fluent_dialogue_dora` for runtime helpers that are not generated contract code.
 - Keep executable DORA nodes under top-level `nodes/`.
 - Keep Rust-heavy node implementation inside the owning node directory under `nodes/`.
 - Do not reintroduce top-level `crates/` unless a human explicitly approves the exception.

@@ -1,8 +1,8 @@
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import TurnIds, VoiceSessionEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TurnIds, VoiceSessionEvent
+from fluent_dialogue_dora.dora import (
     DoraSessionMetadataError,
     decode_voice_session_event_from_dora,
     encode_voice_session_event_for_dora,

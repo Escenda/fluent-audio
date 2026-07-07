@@ -18,14 +18,14 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AudioChunk,
     AudioFormat,
     AudioLevelEvent,
     VoiceActivityEvent,
     require_contiguous_audio_chunks,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraAudioMetadata,
     decode_audio_chunk_from_dora,
     encode_audio_level_event_for_dora,
@@ -193,7 +193,7 @@ def run_vad_events(node, config: VadNodeConfig) -> VadNodeSummary:
                 raise VadNodeError(f"Unexpected DORA input id: {input_id!r}")
             raise VadNodeError("DORA input closed before audio final marker")
         if event_type != "INPUT":
-            raise VadNodeError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         if input_id != "audio":

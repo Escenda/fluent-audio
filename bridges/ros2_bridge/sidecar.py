@@ -1,4 +1,4 @@
-"""Real rclpy sidecar for fluent-audio ROS2 bridge runtime.
+"""Real rclpy sidecar for fluent-dialogue-dora ROS2 bridge runtime.
 
 The sidecar publishes DORA inputs to ROS2 topics and subscribes to ROS2 command
 topics that need to flow back into DORA. This module intentionally
@@ -25,21 +25,21 @@ if str(_REPO_ROOT) not in sys.path:
 import rclpy
 from builtin_interfaces.msg import Time as TimeMsg
 from dora import Node as DoraNode
-from fluent_audio_interfaces.msg import AgentApprovalRequest as AgentApprovalRequestMsg
-from fluent_audio_interfaces.msg import AgentCancelRequest as AgentCancelRequestMsg
-from fluent_audio_interfaces.msg import AgentTextDelta as AgentTextDeltaMsg
-from fluent_audio_interfaces.msg import AgentToolEvent as AgentToolEventMsg
-from fluent_audio_interfaces.msg import AgentTurnDone as AgentTurnDoneMsg
-from fluent_audio_interfaces.msg import AsrControl as AsrControlMsg
-from fluent_audio_interfaces.msg import AudioFrame as AudioFrameMsg
-from fluent_audio_interfaces.msg import DialogueEvent as DialogueEventMsg
-from fluent_audio_interfaces.msg import PlaybackCommand as PlaybackCommandMsg
-from fluent_audio_interfaces.msg import PlaybackDone as PlaybackDoneMsg
-from fluent_audio_interfaces.msg import PlaybackState as PlaybackStateMsg
-from fluent_audio_interfaces.msg import Transcript as TranscriptMsg
-from fluent_audio_interfaces.msg import TurnEvent as TurnEventMsg
-from fluent_audio_interfaces.msg import VoiceActivity as VoiceActivityMsg
-from fluent_audio_interfaces.msg import VoiceSessionEvent as VoiceSessionEventMsg
+from fluent_dialogue_dora_interfaces.msg import AgentApprovalRequest as AgentApprovalRequestMsg
+from fluent_dialogue_dora_interfaces.msg import AgentCancelRequest as AgentCancelRequestMsg
+from fluent_dialogue_dora_interfaces.msg import AgentTextDelta as AgentTextDeltaMsg
+from fluent_dialogue_dora_interfaces.msg import AgentToolEvent as AgentToolEventMsg
+from fluent_dialogue_dora_interfaces.msg import AgentTurnDone as AgentTurnDoneMsg
+from fluent_dialogue_dora_interfaces.msg import AsrControl as AsrControlMsg
+from fluent_dialogue_dora_interfaces.msg import AudioFrame as AudioFrameMsg
+from fluent_dialogue_dora_interfaces.msg import DialogueEvent as DialogueEventMsg
+from fluent_dialogue_dora_interfaces.msg import PlaybackCommand as PlaybackCommandMsg
+from fluent_dialogue_dora_interfaces.msg import PlaybackDone as PlaybackDoneMsg
+from fluent_dialogue_dora_interfaces.msg import PlaybackState as PlaybackStateMsg
+from fluent_dialogue_dora_interfaces.msg import Transcript as TranscriptMsg
+from fluent_dialogue_dora_interfaces.msg import TurnEvent as TurnEventMsg
+from fluent_dialogue_dora_interfaces.msg import VoiceActivity as VoiceActivityMsg
+from fluent_dialogue_dora_interfaces.msg import VoiceSessionEvent as VoiceSessionEventMsg
 from rclpy.node import Node as RclpyNode
 from std_msgs.msg import Header as HeaderMsg
 
@@ -89,24 +89,24 @@ class Ros2BridgeSidecarTopics(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
-    audio: str = Field(default="/fluent_audio/audio", min_length=1)
-    activity: str = Field(default="/fluent_audio/activity", min_length=1)
-    turn: str = Field(default="/fluent_audio/turn", min_length=1)
-    asr_control: str = Field(default="/fluent_audio/asr_control", min_length=1)
-    transcript: str = Field(default="/fluent_audio/transcript", min_length=1)
-    session: str = Field(default="/fluent_audio/session", min_length=1)
-    dialogue: str = Field(default="/fluent_audio/dialogue", min_length=1)
-    agent_text: str = Field(default="/fluent_audio/agent_text", min_length=1)
-    agent_done: str = Field(default="/fluent_audio/agent_done", min_length=1)
-    agent_approval: str = Field(default="/fluent_audio/agent_approval", min_length=1)
-    agent_tool: str = Field(default="/fluent_audio/agent_tool", min_length=1)
-    playback_command: str = Field(default="/fluent_audio/playback_command", min_length=1)
-    playback_state: str = Field(default="/fluent_audio/playback_state", min_length=1)
-    playback_done: str = Field(default="/fluent_audio/playback_done", min_length=1)
-    agent_cancel: str = Field(default="/fluent_audio/in/agent_cancel", min_length=1)
-    asr_control_ingress: str = Field(default="/fluent_audio/in/asr_control", min_length=1)
+    audio: str = Field(default="/fluent_dialogue_dora/audio", min_length=1)
+    activity: str = Field(default="/fluent_dialogue_dora/activity", min_length=1)
+    turn: str = Field(default="/fluent_dialogue_dora/turn", min_length=1)
+    asr_control: str = Field(default="/fluent_dialogue_dora/asr_control", min_length=1)
+    transcript: str = Field(default="/fluent_dialogue_dora/transcript", min_length=1)
+    session: str = Field(default="/fluent_dialogue_dora/session", min_length=1)
+    dialogue: str = Field(default="/fluent_dialogue_dora/dialogue", min_length=1)
+    agent_text: str = Field(default="/fluent_dialogue_dora/agent_text", min_length=1)
+    agent_done: str = Field(default="/fluent_dialogue_dora/agent_done", min_length=1)
+    agent_approval: str = Field(default="/fluent_dialogue_dora/agent_approval", min_length=1)
+    agent_tool: str = Field(default="/fluent_dialogue_dora/agent_tool", min_length=1)
+    playback_command: str = Field(default="/fluent_dialogue_dora/playback_command", min_length=1)
+    playback_state: str = Field(default="/fluent_dialogue_dora/playback_state", min_length=1)
+    playback_done: str = Field(default="/fluent_dialogue_dora/playback_done", min_length=1)
+    agent_cancel: str = Field(default="/fluent_dialogue_dora/in/agent_cancel", min_length=1)
+    asr_control_ingress: str = Field(default="/fluent_dialogue_dora/in/asr_control", min_length=1)
     playback_command_ingress: str = Field(
-        default="/fluent_audio/in/playback_command",
+        default="/fluent_dialogue_dora/in/playback_command",
         min_length=1,
     )
 
@@ -116,7 +116,7 @@ class Ros2BridgeSidecarConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
-    node_name: str = Field(default="fluent_audio_ros2_bridge", min_length=1)
+    node_name: str = Field(default="fluent_dialogue_dora_ros2_bridge", min_length=1)
     qos_depth: int = Field(default=10, gt=0)
     spin_timeout_seconds: float = Field(default=0.02, gt=0.0)
     required_final_inputs: tuple[Ros2BridgeFiniteInputId, ...] = Field(default=())
@@ -278,7 +278,7 @@ class RclpySpinThread:
         self._node = node
         self._timeout_seconds = timeout_seconds
         self._stop_event = threading.Event()
-        self._thread = threading.Thread(target=self._run, name="fluent-audio-ros2-spin")
+        self._thread = threading.Thread(target=self._run, name="fluent-dialogue-dora-ros2-spin")
         self._failure: BaseException | None = None
 
     def start(self) -> None:
@@ -301,9 +301,9 @@ class RclpySpinThread:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the fluent-audio ROS2 sidecar bridge.")
+    parser = argparse.ArgumentParser(description="Run the fluent-dialogue-dora ROS2 sidecar bridge.")
     parser.add_argument("--dora", action="store_true")
-    parser.add_argument("--node-name", default="fluent_audio_ros2_bridge")
+    parser.add_argument("--node-name", default="fluent_dialogue_dora_ros2_bridge")
     parser.add_argument("--qos-depth", type=int, default=10)
     parser.add_argument("--spin-timeout-seconds", type=float, default=0.02)
     parser.add_argument(
@@ -312,25 +312,25 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["audio", "activity", "turn", "asr_control", "transcript"],
         dest="required_final_inputs",
     )
-    parser.add_argument("--audio-topic", default="/fluent_audio/audio")
-    parser.add_argument("--activity-topic", default="/fluent_audio/activity")
-    parser.add_argument("--turn-topic", default="/fluent_audio/turn")
-    parser.add_argument("--asr-control-topic", default="/fluent_audio/asr_control")
-    parser.add_argument("--transcript-topic", default="/fluent_audio/transcript")
-    parser.add_argument("--session-topic", default="/fluent_audio/session")
-    parser.add_argument("--dialogue-topic", default="/fluent_audio/dialogue")
-    parser.add_argument("--agent-text-topic", default="/fluent_audio/agent_text")
-    parser.add_argument("--agent-done-topic", default="/fluent_audio/agent_done")
-    parser.add_argument("--agent-approval-topic", default="/fluent_audio/agent_approval")
-    parser.add_argument("--agent-tool-topic", default="/fluent_audio/agent_tool")
-    parser.add_argument("--playback-command-topic", default="/fluent_audio/playback_command")
-    parser.add_argument("--playback-state-topic", default="/fluent_audio/playback_state")
-    parser.add_argument("--playback-done-topic", default="/fluent_audio/playback_done")
-    parser.add_argument("--agent-cancel-topic", default="/fluent_audio/in/agent_cancel")
-    parser.add_argument("--asr-control-ingress-topic", default="/fluent_audio/in/asr_control")
+    parser.add_argument("--audio-topic", default="/fluent_dialogue_dora/audio")
+    parser.add_argument("--activity-topic", default="/fluent_dialogue_dora/activity")
+    parser.add_argument("--turn-topic", default="/fluent_dialogue_dora/turn")
+    parser.add_argument("--asr-control-topic", default="/fluent_dialogue_dora/asr_control")
+    parser.add_argument("--transcript-topic", default="/fluent_dialogue_dora/transcript")
+    parser.add_argument("--session-topic", default="/fluent_dialogue_dora/session")
+    parser.add_argument("--dialogue-topic", default="/fluent_dialogue_dora/dialogue")
+    parser.add_argument("--agent-text-topic", default="/fluent_dialogue_dora/agent_text")
+    parser.add_argument("--agent-done-topic", default="/fluent_dialogue_dora/agent_done")
+    parser.add_argument("--agent-approval-topic", default="/fluent_dialogue_dora/agent_approval")
+    parser.add_argument("--agent-tool-topic", default="/fluent_dialogue_dora/agent_tool")
+    parser.add_argument("--playback-command-topic", default="/fluent_dialogue_dora/playback_command")
+    parser.add_argument("--playback-state-topic", default="/fluent_dialogue_dora/playback_state")
+    parser.add_argument("--playback-done-topic", default="/fluent_dialogue_dora/playback_done")
+    parser.add_argument("--agent-cancel-topic", default="/fluent_dialogue_dora/in/agent_cancel")
+    parser.add_argument("--asr-control-ingress-topic", default="/fluent_dialogue_dora/in/asr_control")
     parser.add_argument(
         "--playback-command-ingress-topic",
-        default="/fluent_audio/in/playback_command",
+        default="/fluent_dialogue_dora/in/playback_command",
     )
     return parser
 

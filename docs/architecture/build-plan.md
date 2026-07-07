@@ -1,6 +1,6 @@
 # Build Plan
 
-This document tracks the bottom-up construction status for `fluent-audio`.
+This document tracks the bottom-up construction status for `fluent-dialogue-dora`.
 
 ## Status Rules
 
@@ -123,5 +123,5 @@ The live hardware and live model paths remain guarded:
 ```bash
 scripts/run_live_hardware_voice_session.sh --write-dataflow
 scripts/run_codex_app_server_live_smoke.sh --write-live-approval-dataflow
-FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-approval
+FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-approval
 ```

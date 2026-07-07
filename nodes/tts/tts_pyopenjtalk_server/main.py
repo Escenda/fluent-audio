@@ -1,4 +1,4 @@
-"""Fixed-voice PyOpenJTalk HTTP server for the fluent-audio TTS boundary."""
+"""Fixed-voice PyOpenJTalk HTTP server for the fluent-dialogue-dora TTS boundary."""
 # ruff: noqa: E402
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.contracts import AudioFormat
+from fluent_dialogue_dora.contracts import AudioFormat
 from nodes.tts.tts_backend.main import (
     TtsBackendAudioChunkEvent,
     TtsBackendAudioDoneEvent,
@@ -103,7 +103,7 @@ class PyOpenJTalkBackend:
 
 
 def _normalize_pyopenjtalk_waveform(waveform: np.ndarray) -> np.ndarray:
-    """Normalize PyOpenJTalk's known float domains to fluent-audio f32le."""
+    """Normalize PyOpenJTalk's known float domains to fluent-dialogue-dora f32le."""
 
     peak = float(np.max(np.abs(waveform)))
     if peak <= 1.0:

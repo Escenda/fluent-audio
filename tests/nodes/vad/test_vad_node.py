@@ -3,8 +3,8 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import AudioChunk, AudioFormat
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioChunk, AudioFormat
+from fluent_dialogue_dora.dora import (
     decode_audio_level_event_from_dora,
     decode_voice_activity_event_from_dora,
     encode_audio_chunk_for_dora,

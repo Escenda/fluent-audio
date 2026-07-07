@@ -1,4 +1,4 @@
-"""Pure ROS2-to-DORA ingress helpers for fluent-audio bridge commands."""
+"""Pure ROS2-to-DORA ingress helpers for fluent-dialogue-dora bridge commands."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Literal, Protocol, TypeAlias
 
 import pyarrow as pa
 
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraMetadataMutableMapping,
     encode_agent_cancel_request_for_dora,
     encode_asr_control_for_dora,

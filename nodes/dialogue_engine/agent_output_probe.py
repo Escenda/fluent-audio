@@ -14,13 +14,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentApprovalRequest,
     AgentTextDelta,
     AgentToolEvent,
     AgentTurnDone,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     decode_agent_approval_request_from_dora,
     decode_agent_text_delta_from_dora,
     decode_agent_tool_event_from_dora,

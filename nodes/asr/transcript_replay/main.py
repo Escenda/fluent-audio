@@ -13,8 +13,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.contracts import TranscriptFinal
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TranscriptFinal
+from fluent_dialogue_dora.dora import (
     encode_transcript_final_for_dora,
     encode_transcript_stream_final_marker_for_dora,
 )

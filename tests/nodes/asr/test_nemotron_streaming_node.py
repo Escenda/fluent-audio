@@ -1,7 +1,7 @@
 import pytest
 
-from fluent_audio.contracts import AsrCancel, AsrStart, AsrStop, AudioChunk, AudioFormat
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AsrCancel, AsrStart, AsrStop, AudioChunk, AudioFormat
+from fluent_dialogue_dora.dora import (
     decode_transcript_final_from_dora,
     decode_transcript_partial_from_dora,
     encode_asr_control_for_dora,

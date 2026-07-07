@@ -22,29 +22,29 @@ from nodes.dialogue_engine.codex_app_server.main import (
     resolve_app_server_command,
 )
 
-command_file = os.environ.get("FLUENT_AUDIO_CODEX_APP_SERVER_COMMAND_FILE")
+command_file = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APP_SERVER_COMMAND_FILE")
 command = resolve_app_server_command(
     command_remainder=(),
-    command_json=os.environ.get("FLUENT_AUDIO_CODEX_APP_SERVER_COMMAND_JSON"),
+    command_json=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APP_SERVER_COMMAND_JSON"),
     command_file=Path(command_file) if command_file else None,
 )
 
 config = CodexAppServerConfig(
     command=command,
-    timeout_seconds=float(os.environ.get("FLUENT_AUDIO_CODEX_TIMEOUT_SECONDS", "10")),
-    cwd=os.environ.get("FLUENT_AUDIO_CODEX_CWD", os.getcwd()),
-    model=os.environ.get("FLUENT_AUDIO_CODEX_MODEL"),
-    model_provider=os.environ.get("FLUENT_AUDIO_CODEX_MODEL_PROVIDER"),
-    base_instructions=os.environ.get("FLUENT_AUDIO_CODEX_BASE_INSTRUCTIONS"),
-    developer_instructions=os.environ.get("FLUENT_AUDIO_CODEX_DEVELOPER_INSTRUCTIONS"),
-    sandbox=os.environ.get("FLUENT_AUDIO_CODEX_SANDBOX", "read-only"),
-    approval_policy=os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_POLICY", "never"),
-    approvals_reviewer=os.environ.get("FLUENT_AUDIO_CODEX_APPROVALS_REVIEWER", "user"),
+    timeout_seconds=float(os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_TIMEOUT_SECONDS", "10")),
+    cwd=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_CWD", os.getcwd()),
+    model=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_MODEL"),
+    model_provider=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_MODEL_PROVIDER"),
+    base_instructions=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_BASE_INSTRUCTIONS"),
+    developer_instructions=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_DEVELOPER_INSTRUCTIONS"),
+    sandbox=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_SANDBOX", "read-only"),
+    approval_policy=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_POLICY", "never"),
+    approvals_reviewer=os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVALS_REVIEWER", "user"),
 )
 transport = SubprocessCodexJsonRpcTransport(config)
 try:
     thread = transport.ensure_thread_started(
-        os.environ.get("FLUENT_AUDIO_CODEX_SESSION_ID", "live-stdio-handshake")
+        os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_SESSION_ID", "live-stdio-handshake")
     )
     print(
         {
@@ -58,12 +58,12 @@ finally:
 PY
     ;;
   --live-turn|--write-live-turn-dataflow|--live-approval|--write-live-approval-dataflow)
-    if [[ "${MODE}" == "--live-turn" && "${FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN:-}" != "1" ]]; then
-      echo "live Codex turn not run: set FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1" >&2
+    if [[ "${MODE}" == "--live-turn" && "${FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN:-}" != "1" ]]; then
+      echo "live Codex turn not run: set FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1" >&2
       exit 64
     fi
-    if [[ "${MODE}" == "--live-approval" && "${FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN:-}" != "1" ]]; then
-      echo "live Codex approval turn not run: set FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1" >&2
+    if [[ "${MODE}" == "--live-approval" && "${FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN:-}" != "1" ]]; then
+      echo "live Codex approval turn not run: set FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1" >&2
       exit 64
     fi
     cd "${REPO_ROOT}"
@@ -102,26 +102,26 @@ def write_temp_payload(output_path: Path, name: str, value: str) -> Path:
 output_path = Path(sys.argv[1])
 repo_root = Path(sys.argv[2])
 dataflow_kind = sys.argv[3]
-session_id = os.environ.get("FLUENT_AUDIO_CODEX_SESSION_ID", "live-turn-smoke")
-user_turn_id = os.environ.get("FLUENT_AUDIO_CODEX_USER_TURN_ID", "user-turn-live-smoke")
+session_id = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_SESSION_ID", "live-turn-smoke")
+user_turn_id = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_USER_TURN_ID", "user-turn-live-smoke")
 assistant_turn_id = os.environ.get(
-    "FLUENT_AUDIO_CODEX_ASSISTANT_TURN_ID",
+    "FLUENT_DIALOGUE_DORA_CODEX_ASSISTANT_TURN_ID",
     "assistant-turn-live-smoke",
 )
-expected_text = os.environ.get("FLUENT_AUDIO_CODEX_EXPECTED_TEXT", "fa-live-ok-314159")
+expected_text = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_EXPECTED_TEXT", "fa-live-ok-314159")
 if dataflow_kind == "approval":
-    session_id = os.environ.get("FLUENT_AUDIO_CODEX_SESSION_ID", "live-approval-smoke")
-    user_turn_id = os.environ.get("FLUENT_AUDIO_CODEX_USER_TURN_ID", "user-turn-live-approval")
+    session_id = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_SESSION_ID", "live-approval-smoke")
+    user_turn_id = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_USER_TURN_ID", "user-turn-live-approval")
     assistant_turn_id = os.environ.get(
-        "FLUENT_AUDIO_CODEX_ASSISTANT_TURN_ID",
+        "FLUENT_DIALOGUE_DORA_CODEX_ASSISTANT_TURN_ID",
         "assistant-turn-live-approval",
     )
     expected_text = os.environ.get(
-        "FLUENT_AUDIO_CODEX_EXPECTED_TEXT",
+        "FLUENT_DIALOGUE_DORA_CODEX_EXPECTED_TEXT",
         "fa-live-approval-ok-271828",
     )
     turn_text = os.environ.get(
-        "FLUENT_AUDIO_CODEX_TURN_TEXT",
+        "FLUENT_DIALOGUE_DORA_CODEX_TURN_TEXT",
         "/no_think Use the available shell command tool to run exactly: "
         "printf fa-live-approval-ok-271828. "
         "After the command completes, respond with this exact token only: "
@@ -129,28 +129,28 @@ if dataflow_kind == "approval":
     )
 else:
     turn_text = os.environ.get(
-        "FLUENT_AUDIO_CODEX_TURN_TEXT",
+        "FLUENT_DIALOGUE_DORA_CODEX_TURN_TEXT",
         "/no_think Respond with this exact token only: fa-live-ok-314159",
     )
 default_approval_policy = "untrusted" if dataflow_kind == "approval" else "never"
-web_bridge_port = os.environ.get("FLUENT_AUDIO_CODEX_WEB_PORT", "18084")
-codex_control_port = os.environ.get("FLUENT_AUDIO_CODEX_CONTROL_PORT", "18184")
+web_bridge_port = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_WEB_PORT", "18084")
+codex_control_port = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_CONTROL_PORT", "18184")
 
 codex_args = [
     "../../nodes/dialogue_engine/codex_app_server/main.py",
     "--dora",
     "--timeout-seconds",
-    os.environ.get("FLUENT_AUDIO_CODEX_TIMEOUT_SECONDS", "60"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_TIMEOUT_SECONDS", "60"),
     "--approval-response-timeout-seconds",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_TIMEOUT_SECONDS", "10"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_TIMEOUT_SECONDS", "10"),
     "--cwd",
-    os.environ.get("FLUENT_AUDIO_CODEX_CWD", str(repo_root)),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_CWD", str(repo_root)),
     "--sandbox",
-    os.environ.get("FLUENT_AUDIO_CODEX_SANDBOX", "read-only"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_SANDBOX", "read-only"),
     "--approval-policy",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_POLICY", default_approval_policy),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_POLICY", default_approval_policy),
     "--approvals-reviewer",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVALS_REVIEWER", "user"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVALS_REVIEWER", "user"),
 ]
 if dataflow_kind == "approval":
     codex_args.extend(
@@ -162,19 +162,19 @@ if dataflow_kind == "approval":
         ]
     )
 optional_args = (
-    ("FLUENT_AUDIO_CODEX_MODEL", "--model"),
-    ("FLUENT_AUDIO_CODEX_MODEL_PROVIDER", "--model-provider"),
-    ("FLUENT_AUDIO_CODEX_APP_SERVER_COMMAND_JSON", "--app-server-command-json"),
-    ("FLUENT_AUDIO_CODEX_APP_SERVER_COMMAND_FILE", "--app-server-command-file"),
+    ("FLUENT_DIALOGUE_DORA_CODEX_MODEL", "--model"),
+    ("FLUENT_DIALOGUE_DORA_CODEX_MODEL_PROVIDER", "--model-provider"),
+    ("FLUENT_DIALOGUE_DORA_CODEX_APP_SERVER_COMMAND_JSON", "--app-server-command-json"),
+    ("FLUENT_DIALOGUE_DORA_CODEX_APP_SERVER_COMMAND_FILE", "--app-server-command-file"),
 )
 for env_name, flag in optional_args:
     value = os.environ.get(env_name)
     if value:
         codex_args.extend((flag, value))
 instruction_file_args = (
-    ("FLUENT_AUDIO_CODEX_BASE_INSTRUCTIONS", "--base-instructions-file", "base_instructions.txt"),
+    ("FLUENT_DIALOGUE_DORA_CODEX_BASE_INSTRUCTIONS", "--base-instructions-file", "base_instructions.txt"),
     (
-        "FLUENT_AUDIO_CODEX_DEVELOPER_INSTRUCTIONS",
+        "FLUENT_DIALOGUE_DORA_CODEX_DEVELOPER_INSTRUCTIONS",
         "--developer-instructions-file",
         "developer_instructions.txt",
     ),
@@ -240,16 +240,16 @@ probe_args = [
     "--agent-turn-id",
     assistant_turn_id,
     "--expected-min-text-deltas",
-    os.environ.get("FLUENT_AUDIO_CODEX_EXPECTED_MIN_TEXT_DELTAS", "1"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_EXPECTED_MIN_TEXT_DELTAS", "1"),
     "--expected-approval-requests",
     os.environ.get(
-        "FLUENT_AUDIO_CODEX_EXPECTED_APPROVAL_REQUESTS",
+        "FLUENT_DIALOGUE_DORA_CODEX_EXPECTED_APPROVAL_REQUESTS",
         "1" if dataflow_kind == "approval" else "0",
     ),
     "--expected-tool-events",
-    os.environ.get("FLUENT_AUDIO_CODEX_EXPECTED_TOOL_EVENTS", "0"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_EXPECTED_TOOL_EVENTS", "0"),
     "--expected-done-status",
-    os.environ.get("FLUENT_AUDIO_CODEX_EXPECTED_DONE_STATUS", "completed"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_EXPECTED_DONE_STATUS", "completed"),
     "--expected-text-contains",
     expected_text,
 ]
@@ -281,7 +281,7 @@ probe_node = (
 approval_nodes = ""
 if dataflow_kind == "approval":
     bridge_url = os.environ.get(
-        "FLUENT_AUDIO_CODEX_WEB_BRIDGE_URL",
+        "FLUENT_DIALOGUE_DORA_CODEX_WEB_BRIDGE_URL",
         "http://127.0.0.1:" + web_bridge_port,
     )
     approval_nodes = (
@@ -351,9 +351,9 @@ if dataflow_kind == "approval":
                 "--bridge-url",
                 bridge_url,
                 "--decision",
-                os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_DECISION", "accept"),
+                os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_DECISION", "accept"),
                 "--timeout-seconds",
-                os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_TIMEOUT_SECONDS", "20"),
+                os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_TIMEOUT_SECONDS", "20"),
             ]
         )
         + "\n"

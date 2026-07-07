@@ -25,13 +25,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AudioChunk,
     AudioFormat,
     SynthesizedAudioChunk,
     TtsTextChunk,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     decode_tts_text_chunk_from_dora,
     encode_synthesized_audio_chunk_for_dora,
     encode_synthesized_audio_final_marker_for_dora,
@@ -284,7 +284,7 @@ def run_tts_backend_events(
                 synthesized_audio_finals=synthesized_audio_finals,
             )
         if event_type != "INPUT":
-            raise TtsBackendNodeError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         if input_id != "tts_text":

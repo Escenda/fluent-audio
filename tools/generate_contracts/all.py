@@ -1,4 +1,4 @@
-"""Generate all checked-in fluent-audio contract bindings."""
+"""Generate all checked-in fluent-dialogue-dora contract bindings."""
 # ruff: noqa: E402
 
 import sys

@@ -17,7 +17,7 @@ uv run tools/generate_contracts/typescript.py
 Use from TypeScript:
 
 ```ts
-import { fluent_audio } from "@fluent-audio/contracts";
+import { fluent_dialogue_dora } from "@fluent-dialogue-dora/contracts";
 
-const frame = fluent_audio.v1.AudioFrame.create({ sourceId: "mic" });
+const frame = fluent_dialogue_dora.v1.AudioFrame.create({ sourceId: "mic" });
 ```

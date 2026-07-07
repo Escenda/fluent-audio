@@ -1,4 +1,4 @@
-"""ROS2 projection models for fluent-audio bridge boundaries.
+"""ROS2 projection models for fluent-dialogue-dora bridge boundaries.
 
 These models mirror the intended ROS2 messages without importing rclpy or generated
 ROS packages. The executable ROS2 node can translate these validated projections to
@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBytes, StringConstraints, model_validator
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentApprovalRequest,
     AgentCancelRequest,
     AgentTextDelta,
@@ -46,7 +46,7 @@ Ros2PlaybackCommandName = Literal["stop", "pause", "resume", "clear"]
 
 
 class Ros2BridgeMessageError(ValueError):
-    """Raised when a ROS2 projection cannot preserve a fluent-audio contract."""
+    """Raised when a ROS2 projection cannot preserve a fluent-dialogue-dora contract."""
 
 
 class Ros2Time(BaseModel):

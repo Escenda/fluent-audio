@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from fluent_audio.contracts import TurnIds, VoiceSessionEvent
+from fluent_dialogue_dora.contracts import TurnIds, VoiceSessionEvent
 
 
 def test_voice_session_event_validates_expected_variant() -> None:

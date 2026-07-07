@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package fluent_dialogue_dora.v1;
+
+enum VoiceActivityState {
+  VOICE_ACTIVITY_STATE_UNSPECIFIED = 0;
+  VOICE_ACTIVITY_STATE_SILENCE = 1;
+  VOICE_ACTIVITY_STATE_SPEECH = 2;
+}
+
+enum TurnState {
+  TURN_STATE_UNSPECIFIED = 0;
+  TURN_STATE_IDLE = 1;
+  TURN_STATE_STARTED = 2;
+  TURN_STATE_ACTIVE = 3;
+  TURN_STATE_ENDED = 4;
+  TURN_STATE_CANCELLED = 5;
+}
+
+message VoiceActivityEvent {
+  string source_id = 1;
+  string stream_id = 2;
+  uint64 seq = 3;
+  uint64 sample_index = 4;
+  uint32 frame_count = 5;
+  VoiceActivityState state = 6;
+  double speech_probability = 7;
+}
+
+message AudioLevelEvent {
+  string source_id = 1;
+  string stream_id = 2;
+  uint64 seq = 3;
+  uint64 sample_index = 4;
+  uint32 frame_count = 5;
+  double rms_dbfs = 6;
+  double peak_dbfs = 7;
+  double speech_probability = 8;
+}
+
+message VoiceActivityStreamFinal {
+  string source_id = 1;
+  string stream_id = 2;
+  uint64 seq = 3;
+  uint64 sample_index = 4;
+}
+
+message TurnEvent {
+  string session_id = 1;
+  string user_turn_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+  uint64 sample_index = 5;
+  TurnState state = 6;
+  optional double confidence = 7;
+}
+
+message TurnStreamFinal {
+  string session_id = 1;
+  string stream_id = 2;
+  uint64 seq = 3;
+  uint64 sample_index = 4;
+}

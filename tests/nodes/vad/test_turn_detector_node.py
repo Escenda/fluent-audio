@@ -1,7 +1,7 @@
 import pytest
 
-from fluent_audio.contracts import VoiceActivityEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import VoiceActivityEvent
+from fluent_dialogue_dora.dora import (
     decode_turn_event_from_dora,
     encode_voice_activity_event_for_dora,
     encode_voice_activity_final_marker_for_dora,

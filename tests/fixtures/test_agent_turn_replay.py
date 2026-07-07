@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from fluent_audio.contracts import AgentTurnRequest
-from fluent_audio.dora import decode_agent_turn_request_from_dora
+from fluent_dialogue_dora.contracts import AgentTurnRequest
+from fluent_dialogue_dora.dora import decode_agent_turn_request_from_dora
 from tests.fixtures.dora.agent_turn_replay import main, send_agent_turn_request_dora
 
 

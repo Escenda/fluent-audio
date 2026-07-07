@@ -12,4 +12,4 @@ a production TTS runtime.
 Output:
 
 - `synth_audio`: chunks and final marker encoded with
-  `fluent_audio.dora.synthesis`.
+  `fluent_dialogue_dora.dora.synthesis`.

@@ -14,8 +14,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import TurnEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TurnEvent
+from fluent_dialogue_dora.dora import (
     decode_turn_event_from_dora,
     validate_dora_turn_final_marker,
     validate_dora_turn_metadata,

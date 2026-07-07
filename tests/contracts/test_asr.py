@@ -1,7 +1,7 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from fluent_audio.contracts import AsrControl, AsrStart, AsrStop
+from fluent_dialogue_dora.contracts import AsrControl, AsrStart, AsrStop
 
 
 def test_asr_control_validates_discriminated_variants() -> None:

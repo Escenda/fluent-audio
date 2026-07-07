@@ -1,7 +1,7 @@
 import pytest
 
-from fluent_audio.contracts import AsrCancel, AsrStart, AsrStop, TurnEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AsrCancel, AsrStart, AsrStop, TurnEvent
+from fluent_dialogue_dora.dora import (
     decode_asr_control_from_dora,
     encode_turn_event_for_dora,
     encode_turn_final_marker_for_dora,

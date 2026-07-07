@@ -37,7 +37,7 @@ live approval turns. By default it does run CPAL hardware smokes, the real
 PyOpenJTalk smoke, the real Nemotron DORA smoke, and the Docker/Jazzy ROS2
 sidecar smoke. Those may be explicitly excluded with the script's `--skip-*`
 options when auditing a narrower environment. Live Codex model turns remain
-guarded by `FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1`.
+guarded by `FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1`.
 
 ## File Realtime Session Smoke
 
@@ -89,7 +89,7 @@ scripts/run_live_hardware_voice_session.sh --write-dataflow
 Start the live dashboard and hardware session:
 
 ```bash
-FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1 scripts/run_live_hardware_voice_session.sh --serve
+FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1 scripts/run_live_hardware_voice_session.sh --serve
 ```
 
 The default CPAL selector is the explicit device id used by the hardware smokes:
@@ -97,17 +97,17 @@ The default CPAL selector is the explicit device id used by the hardware smokes:
 selector for input and output:
 
 ```bash
-FLUENT_AUDIO_CPAL_INPUT_DEVICE_ID=alsa:hw:CARD=APE,DEV=0
-FLUENT_AUDIO_CPAL_OUTPUT_DEVICE_ID=alsa:hw:CARD=APE,DEV=0
-FLUENT_AUDIO_USE_DEFAULT_INPUT_DEVICE=1
-FLUENT_AUDIO_USE_DEFAULT_OUTPUT_DEVICE=1
+FLUENT_DIALOGUE_DORA_CPAL_INPUT_DEVICE_ID=alsa:hw:CARD=APE,DEV=0
+FLUENT_DIALOGUE_DORA_CPAL_OUTPUT_DEVICE_ID=alsa:hw:CARD=APE,DEV=0
+FLUENT_DIALOGUE_DORA_USE_DEFAULT_INPUT_DEVICE=1
+FLUENT_DIALOGUE_DORA_USE_DEFAULT_OUTPUT_DEVICE=1
 ```
 
 For a bounded run instead of an open live session:
 
 ```bash
-FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1 \
-FLUENT_AUDIO_CAPTURE_MAX_CHUNKS=3000 \
+FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1 \
+FLUENT_DIALOGUE_DORA_CAPTURE_MAX_CHUNKS=3000 \
 scripts/run_live_hardware_voice_session.sh --run
 ```
 
@@ -196,7 +196,7 @@ Do not run the live turn smoke casually. Use the guarded script:
 
 ```bash
 scripts/run_codex_app_server_live_smoke.sh --write-live-turn-dataflow
-FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-turn
+FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-turn
 ```
 
 The first command only writes the local generated dataflow under `graphs/out`
@@ -218,7 +218,7 @@ environment-specific dataflow under `graphs/out`:
 
 ```bash
 scripts/run_codex_app_server_live_smoke.sh --write-live-approval-dataflow
-FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-approval
+FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-approval
 ```
 
 Like the live turn smoke, the approval smoke is guarded because it starts a real

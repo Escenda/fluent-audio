@@ -1,0 +1,10 @@
+python
+../tests/fixtures/jsonrpc/codex_app_server_tool_narration_fixture.py
+--preamble-text
+これからテストツールを実行します。
+--post-text
+ツールの実行が完了しました。
+--tool-delay-seconds
+4.0
+--expected-turns
+1

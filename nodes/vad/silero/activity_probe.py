@@ -8,8 +8,8 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import VoiceActivityEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import VoiceActivityEvent
+from fluent_dialogue_dora.dora import (
     decode_voice_activity_event_from_dora,
     validate_dora_voice_activity_final_marker,
     validate_dora_voice_activity_metadata,

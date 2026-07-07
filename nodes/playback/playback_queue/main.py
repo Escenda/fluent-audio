@@ -21,7 +21,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AudioChunk,
     AudioFormat,
     PlaybackDone,
@@ -30,7 +30,7 @@ from fluent_audio.contracts import (
     PlaybackStateKind,
     SynthesizedAudioChunk,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraSynthesizedAudioMetadata,
     decode_playback_command_from_dora,
     decode_synthesized_audio_chunk_from_dora,
@@ -42,7 +42,7 @@ from fluent_audio.dora import (
     validate_dora_synthesized_audio_final_marker,
     validate_dora_synthesized_audio_metadata,
 )
-from fluent_audio.dora.playback import PlaybackCommandEvent
+from fluent_dialogue_dora.dora.playback import PlaybackCommandEvent
 
 DEFAULT_MAX_QUEUED_AUDIO_CHUNKS = 256
 DEFAULT_DORA_OUTPUT_DRAIN_SECONDS = 0.2
@@ -175,7 +175,7 @@ class PlaybackQueueRuntime:
     def __init__(self, config: PlaybackQueueConfig) -> None:
         self._config = config
         self._active: ActivePlayback | None = None
-        self._failed_request_ids: set[str] = set()
+        self._discarding_request_ids: set[str] = set()
         self._output_format: AudioFormat | None = None
         self._next_output_seq = 0
         self._next_output_sample_index = 0
@@ -188,7 +188,7 @@ class PlaybackQueueRuntime:
         self,
         chunk: SynthesizedAudioChunk,
     ) -> PlaybackQueueOutput:
-        if chunk.request_id in self._failed_request_ids:
+        if chunk.request_id in self._discarding_request_ids:
             return PlaybackQueueOutput()
         active = self._ensure_active_for_chunk(chunk)
         if active.paused:
@@ -202,8 +202,8 @@ class PlaybackQueueRuntime:
         self,
         final_marker: DoraSynthesizedAudioMetadata,
     ) -> PlaybackQueueOutput:
-        if final_marker.request_id in self._failed_request_ids:
-            self._failed_request_ids.remove(final_marker.request_id)
+        if final_marker.request_id in self._discarding_request_ids:
+            self._discarding_request_ids.remove(final_marker.request_id)
             return PlaybackQueueOutput()
         active = self._require_active()
         self._validate_final_marker(active, final_marker)
@@ -238,20 +238,30 @@ class PlaybackQueueRuntime:
             return self._resume_active_request(active)
 
         if command.command == "stop":
-            return self._terminate_active_request(active, "stopped", "stopped")
+            return self._terminate_active_request(
+                active,
+                "stopped",
+                "stopped",
+                discard_remaining_synth_audio=True,
+            )
 
-        return self._terminate_active_request(active, "cancelled", "cancelled")
+        return self._terminate_active_request(
+            active,
+            "cancelled",
+            "cancelled",
+            discard_remaining_synth_audio=True,
+        )
 
     def fail_active_request(self, reason: str) -> PlaybackQueueOutput | None:
         active = self._active
         if active is None:
             return None
-        self._failed_request_ids.add(active.request_id)
         return self._terminate_active_request(
             active,
             "failed",
             "failed",
             reason=reason,
+            discard_remaining_synth_audio=True,
         )
 
     def _ensure_active_for_chunk(self, chunk: SynthesizedAudioChunk) -> ActivePlayback:
@@ -425,7 +435,10 @@ class PlaybackQueueRuntime:
         done_status: PlaybackDoneStatus,
         *,
         reason: str | None = None,
+        discard_remaining_synth_audio: bool = False,
     ) -> PlaybackQueueOutput:
+        if discard_remaining_synth_audio and active.pending_final_marker is None:
+            self._discarding_request_ids.add(active.request_id)
         state = self._state(active, state_kind, reason=reason)
         done = PlaybackDone(
             request_id=active.request_id,
@@ -535,7 +548,7 @@ class PlaybackQueueRuntime:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the fluent-audio playback queue.")
+    parser = argparse.ArgumentParser(description="Run the fluent-dialogue-dora playback queue.")
     parser.add_argument("--dora", action="store_true")
     parser.add_argument(
         "--max-queued-audio-chunks",
@@ -635,7 +648,7 @@ def run_playback_queue_events(
                 raise PlaybackQueueError(f"Unexpected DORA input id: {input_id!r}")
             continue
         if event_type != "INPUT":
-            raise PlaybackQueueError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         try:

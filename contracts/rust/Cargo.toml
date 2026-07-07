@@ -1,11 +1,11 @@
 [package]
-name = "fluent-audio-contracts"
+name = "fluent-dialogue-dora-contracts"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
 [lib]
-name = "fluent_audio_contracts"
+name = "fluent_dialogue_dora_contracts"
 path = "src/lib.rs"
 
 [dependencies]

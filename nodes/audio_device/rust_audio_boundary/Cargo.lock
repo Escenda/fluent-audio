@@ -716,7 +716,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fluent-audio-contracts"
+name = "fluent-dialogue-dora-contracts"
 version = "0.1.0"
 dependencies = [
  "prost",
@@ -726,11 +726,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "fluent-audio-io-boundary"
+name = "fluent-dialogue-dora-io-boundary"
 version = "0.1.0"
 dependencies = [
  "dora-node-api",
- "fluent-audio-contracts",
+ "fluent-dialogue-dora-contracts",
  "prost",
  "thiserror 2.0.18",
 ]

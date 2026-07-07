@@ -1,7 +1,7 @@
 import pytest
 
-from fluent_audio.contracts import AudioChunk, AudioFormat
-from fluent_audio.dora import encode_audio_chunk_for_dora, encode_audio_final_marker_for_dora
+from fluent_dialogue_dora.contracts import AudioChunk, AudioFormat
+from fluent_dialogue_dora.dora import encode_audio_chunk_for_dora, encode_audio_final_marker_for_dora
 from nodes.audio_device.audio_probe.main import (
     AudioProbeError,
     amplitude_to_dbfs,

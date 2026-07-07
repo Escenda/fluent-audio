@@ -1,10 +1,10 @@
 # Contracts Implementation Review
 
-Status: resolved by commit `b62bb9c` (`Implement fluent audio contracts`).
+Status: resolved by commit `b62bb9c` (`Implement fluent dialogue dora contracts`).
 
 This document is kept as audit history for earlier implementation candidates that were not green.
 
-Review target: current uncommitted `src/fluent_audio/contracts/` implementation candidate.
+Review target: current uncommitted `src/fluent_dialogue_dora/contracts/` implementation candidate.
 
 ## Verdict
 
@@ -107,11 +107,11 @@ Commit `b62bb9c` added the required contract modules and updated [build-plan.md]
 Verified after the commit:
 
 ```bash
-uv run --extra dev python -c "import fluent_audio; print(fluent_audio.__file__)"
+uv run --extra dev python -c "import fluent_dialogue_dora; print(fluent_dialogue_dora.__file__)"
 uv run --extra dev python -m pytest tests/contracts
 uv run --extra dev python -m ruff check .
-grep -R "Any\\|dict\\[str\\|object\\|type: ignore" -n src/fluent_audio tests/contracts || true
-grep -R '"sequence"\\|sequence=' -n src/fluent_audio/contracts tests/contracts || true
+grep -R "Any\\|dict\\[str\\|object\\|type: ignore" -n src/fluent_dialogue_dora tests/contracts || true
+grep -R '"sequence"\\|sequence=' -n src/fluent_dialogue_dora/contracts tests/contracts || true
 ```
 
 Results:

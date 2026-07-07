@@ -1,7 +1,7 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     PlaybackCommand,
     PlaybackDone,
     PlaybackPause,

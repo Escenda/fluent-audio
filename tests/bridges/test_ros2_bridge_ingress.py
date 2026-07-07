@@ -1,12 +1,12 @@
 import pytest
 import pyarrow as pa
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentCancelRequest,
     AsrCancel,
     PlaybackStop,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraMetadataMutableMapping,
     decode_agent_cancel_request_from_dora,
     decode_asr_control_from_dora,

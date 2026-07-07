@@ -3,10 +3,10 @@
 Current target layout:
 
 ```text
-fluent-audio/
+fluent-dialogue-dora/
 ├── contracts/
 │   ├── proto/
-│   │   └── fluent_audio/
+│   │   └── fluent_dialogue_dora/
 │   │       └── v1/
 │   ├── python/
 │   ├── rust/

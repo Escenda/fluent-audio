@@ -24,8 +24,8 @@ from bridges.dora_web_bridge.messages import (
     WebApprovalResponseSubmission,
 )
 from bridges.dora_web_bridge.projection import WebApprovalRequestEvent
-from fluent_audio.contracts import AgentApprovalRequest
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AgentApprovalRequest
+from fluent_dialogue_dora.dora import (
     decode_agent_approval_request_from_dora,
     validate_dora_agent_approval_metadata,
 )

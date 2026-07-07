@@ -1,11 +1,11 @@
-"""DORA live topic bridge for the fluent-audio dashboard."""
+"""DORA live topic bridge for the fluent-dialogue-dora dashboard."""
 # ruff: noqa: E402
 
 from __future__ import annotations
 
 import argparse
 import http.client
-import subprocess
+import os
 import sys
 import threading
 import time
@@ -16,7 +16,7 @@ from collections import deque
 from collections.abc import Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, assert_never
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,23 +35,27 @@ from bridges.dora_web_bridge.messages import (
     ApprovalResponsePathParts,
     DoraWebBridgeGlobalSnapshotResponse,
     DoraWebBridgeLatestResponse,
+    DoraWebBridgeTrackFrame,
+    DoraWebBridgeTrackSnapshotResponse,
     DoraWebBridgeTopicEvent,
     DoraWebBridgeTopicListResponse,
     DoraWebBridgeTopicSnapshotResponse,
     DoraWebBridgeTopicSummary,
     WebApprovalResponseSubmission,
     WebBridgeInputId,
+    WebTrackTopic,
 )
+from bridges.dora_web_bridge.projection import WebBridgeProjection
 
 
-NodeRunState = Literal["running", "stopped"]
+NodeRunState = Literal["running", "stopped", "unknown"]
 
 DEFAULT_NODE_LOG_TAIL_COUNT = 160
 MAX_NODE_LOG_TAIL_COUNT = 1000
 DEFAULT_RECENT_LIMIT = 600
 DEFAULT_DASHBOARD_INITIAL_TAIL_COUNT = 500
 DEFAULT_SSE_WAIT_SECONDS = 15.0
-_DASHBOARD_INITIAL_STATE_PLACEHOLDER = "__FLUENT_AUDIO_INITIAL_STATE__"
+_DASHBOARD_INITIAL_STATE_PLACEHOLDER = "__FLUENT_DIALOGUE_DORA_INITIAL_STATE__"
 
 
 class DoraWebBridgeError(ValueError):
@@ -69,6 +73,7 @@ class DoraWebBridgeConfig(BaseModel):
     recent_limit: int = Field(default=DEFAULT_RECENT_LIMIT, ge=1)
     input_ids: tuple[WebBridgeInputId, ...] = WEB_BRIDGE_INPUT_IDS
     runtime_log_path: Path | None = None
+    dataflow_path: Path | None = None
     codex_control_url: str | None = Field(default=None, min_length=1)
     keep_http_after_dora_stop: bool = False
 
@@ -82,24 +87,6 @@ class DoraWebBridgeSummary(BaseModel):
     final_markers: int = Field(ge=0)
     closed_inputs: int = Field(ge=0)
     non_input_events: int = Field(ge=0)
-
-
-class NodeProcessSpec(BaseModel):
-    """Process table matcher for one live voice dataflow node."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-
-    node_id: str = Field(min_length=1)
-    required_terms: tuple[str, ...] = Field(min_length=1)
-
-
-class ProcessSnapshot(BaseModel):
-    """One process row from the local process table."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-
-    pid: int = Field(gt=0)
-    command: str = Field(min_length=1)
 
 
 class WebNodeStatusItem(BaseModel):
@@ -141,6 +128,7 @@ class WebDashboardInitialState(BaseModel):
 
     snapshot: DoraWebBridgeGlobalSnapshotResponse
     topics: DoraWebBridgeTopicListResponse
+    tracks: DoraWebBridgeTrackSnapshotResponse
 
 
 class RequestBodyBoundaryError(ValueError):
@@ -235,6 +223,7 @@ class DoraWebTopicStore:
             input_id: deque(maxlen=recent_limit) for input_id in input_ids
         }
         self._latest_by_topic: dict[str, DoraWebBridgeTopicEvent] = {}
+        self._latest_by_track: dict[WebTrackTopic, DoraWebBridgeTrackFrame] = {}
         self._topic_counts: dict[str, int] = {input_id: 0 for input_id in input_ids}
         self._event_count = 0
         self._condition = threading.Condition()
@@ -266,6 +255,12 @@ class DoraWebTopicStore:
             self._global_events.append(item)
             self._topic_events[input_id].append(item)
             self._latest_by_topic[input_id] = item
+            track_topic = _track_topic_for_event(event)
+            self._latest_by_track[track_topic] = DoraWebBridgeTrackFrame(
+                topic=track_topic,
+                global_offset=item.global_offset,
+                event=event,
+            )
             self._condition.notify_all()
             return item
 
@@ -292,6 +287,16 @@ class DoraWebTopicStore:
                 event_count=self._event_count,
                 events=events,
             )
+
+    def track_snapshot(self) -> DoraWebBridgeTrackSnapshotResponse:
+        with self._condition:
+            tracks = tuple(
+                sorted(
+                    self._latest_by_track.values(),
+                    key=lambda frame: frame.topic,
+                )
+            )
+            return DoraWebBridgeTrackSnapshotResponse(tracks=tracks)
 
     def topic_snapshot(
         self,
@@ -331,7 +336,7 @@ class DoraWebTopicStore:
         timeout_seconds: float,
     ) -> tuple[DoraWebBridgeTopicEvent, ...]:
         with self._condition:
-            self._validate_global_offset_available(offset)
+            offset = self._global_stream_offset(offset)
             self._condition.wait_for(
                 lambda: any(
                     _event_selected_by_topics(event, topics)
@@ -357,7 +362,7 @@ class DoraWebTopicStore:
         with self._condition:
             if input_id not in self._topic_events:
                 raise DoraWebBridgeError(f"Unknown bridge topic: {topic}")
-            self._validate_topic_offset_available(input_id, offset)
+            offset = self._topic_stream_offset(input_id, offset)
             self._condition.wait_for(
                 lambda: any(
                     event.topic_offset >= offset for event in self._topic_events[input_id]
@@ -368,60 +373,66 @@ class DoraWebTopicStore:
                 event for event in self._topic_events[input_id] if event.topic_offset >= offset
             )
 
-    def _validate_global_offset_available(self, offset: int) -> None:
+    def _global_stream_offset(self, offset: int) -> int:
         if offset < 0:
             raise DoraWebBridgeError("after offset must be non-negative")
         if not self._global_events:
-            return
+            return offset
         oldest = self._global_events[0].global_offset
         if offset < oldest:
-            raise DoraWebBridgeError(
-                "requested global offset is older than the retained bridge buffer"
-            )
+            return oldest
+        return offset
 
-    def _validate_topic_offset_available(self, input_id: WebBridgeInputId, offset: int) -> None:
+    def _topic_stream_offset(self, input_id: WebBridgeInputId, offset: int) -> int:
         if offset < 0:
             raise DoraWebBridgeError("after offset must be non-negative")
         events = self._topic_events[input_id]
         if not events:
-            return
+            return offset
         oldest = events[0].topic_offset
         if offset < oldest:
-            raise DoraWebBridgeError(
-                "requested topic offset is older than the retained bridge buffer"
-            )
+            return oldest
+        return offset
 
 
 class NodeStatusMonitor:
     """Reads process-level liveness for the local live voice dataflow."""
 
-    def __init__(self, specs: tuple[NodeProcessSpec, ...]) -> None:
-        if not specs:
-            raise DoraWebBridgeError("Node status monitor requires at least one spec")
-        self._specs = specs
+    def __init__(self, node_ids: tuple[str, ...], runtime_log_path: Path | None) -> None:
+        self._node_ids = node_ids
+        self._runtime_log_path = runtime_log_path
 
     def snapshot(self) -> WebNodeStatusResponse:
-        processes = _read_process_table()
+        spawned_pids = _latest_spawned_pids(self._runtime_log_path)
         statuses: list[WebNodeStatusItem] = []
-        for spec in self._specs:
-            matches = _matching_processes(processes, spec)
-            if matches:
-                first = matches[0]
+        for node_id in self._node_ids:
+            pid = spawned_pids.get(node_id)
+            if pid is None:
                 statuses.append(
                     WebNodeStatusItem(
-                        node_id=spec.node_id,
+                        node_id=node_id,
+                        status="unknown",
+                        process_count=0,
+                    )
+                )
+            elif _pid_is_running(pid):
+                command = _command_for_pid(pid)
+                statuses.append(
+                    WebNodeStatusItem(
+                        node_id=node_id,
                         status="running",
-                        process_count=len(matches),
-                        pid=first.pid,
-                        command=first.command,
+                        process_count=1,
+                        pid=pid,
+                        command=command,
                     )
                 )
             else:
                 statuses.append(
                     WebNodeStatusItem(
-                        node_id=spec.node_id,
+                        node_id=node_id,
                         status="stopped",
                         process_count=0,
+                        pid=pid,
                     )
                 )
         return WebNodeStatusResponse(nodes=tuple(statuses))
@@ -433,10 +444,10 @@ class RuntimeLogReader:
     def __init__(
         self,
         runtime_log_path: Path | None,
-        specs: tuple[NodeProcessSpec, ...],
+        node_ids: tuple[str, ...],
     ) -> None:
         self._runtime_log_path = runtime_log_path
-        self._node_ids = frozenset(spec.node_id for spec in specs)
+        self._node_ids = frozenset(node_ids)
 
     def tail(self, node_id: str, *, tail_count: int) -> WebNodeLogResponse:
         if node_id not in self._node_ids:
@@ -502,6 +513,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--recent-limit", type=int, default=DEFAULT_RECENT_LIMIT)
     parser.add_argument("--input", action="append", choices=list(WEB_BRIDGE_INPUT_IDS), dest="inputs")
     parser.add_argument("--runtime-log", type=Path)
+    parser.add_argument("--dataflow", type=Path)
     parser.add_argument("--codex-control-url")
     parser.add_argument("--keep-http-after-dora-stop", action="store_true")
     return parser
@@ -512,6 +524,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.dora:
         parser.error("dora_web_bridge requires --dora")
+    if args.dataflow is not None and not args.dataflow.is_absolute():
+        parser.error("dora_web_bridge requires --dataflow to be an absolute path")
 
     from dora import Node
 
@@ -523,6 +537,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         recent_limit=args.recent_limit,
         input_ids=input_ids,
         runtime_log_path=args.runtime_log,
+        dataflow_path=args.dataflow,
         codex_control_url=args.codex_control_url,
         keep_http_after_dora_stop=args.keep_http_after_dora_stop,
     )
@@ -538,6 +553,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         store,
         control_client=control_client,
         runtime_log_path=config.runtime_log_path,
+        dataflow_path=config.dataflow_path,
     )
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
@@ -621,10 +637,11 @@ def build_server(
     *,
     control_client: CodexControlClient | None = None,
     runtime_log_path: Path | None = None,
+    dataflow_path: Path | None = None,
 ) -> ThreadingHTTPServer:
-    node_specs = _live_node_status_specs(web_bridge_port=port)
-    node_status_monitor = NodeStatusMonitor(node_specs)
-    runtime_log_reader = RuntimeLogReader(runtime_log_path, node_specs)
+    node_ids = _node_ids_from_dataflow(dataflow_path) if dataflow_path is not None else ()
+    node_status_monitor = NodeStatusMonitor(node_ids, runtime_log_path)
+    runtime_log_reader = RuntimeLogReader(runtime_log_path, node_ids)
 
     class ReusableHTTPServer(ThreadingHTTPServer):
         allow_reuse_address = True
@@ -646,6 +663,9 @@ def build_server(
             if parsed_path.path == "/api/topics":
                 _send_model(self, 200, store.list_topics())
                 return
+            if parsed_path.path == "/api/tracks.json":
+                _send_model(self, 200, store.track_snapshot())
+                return
             if parsed_path.path == "/api/events.json":
                 try:
                     _send_model(
@@ -658,7 +678,7 @@ def build_server(
                 return
             if parsed_path.path == "/api/events.sse":
                 try:
-                    after_offset = _after_offset_from_query(parsed_path.query)
+                    after_offset = _after_offset_from_request(parsed_path.query, self.headers)
                     topics = _topics_from_query(parsed_path.query)
                     _send_global_event_stream(
                         self,
@@ -717,7 +737,7 @@ def build_server(
                         self,
                         store,
                         topic=topic,
-                        after_offset=_after_offset_from_query(parsed_path.query),
+                        after_offset=_after_offset_from_request(parsed_path.query, self.headers),
                     )
                 except DoraWebBridgeError as exc:
                     _send_error(self, 409, str(exc))
@@ -785,6 +805,7 @@ def _dashboard_html_with_initial_state(store: DoraWebTopicStore) -> str:
     initial_state = WebDashboardInitialState(
         snapshot=store.global_snapshot(tail_count=DEFAULT_DASHBOARD_INITIAL_TAIL_COUNT),
         topics=store.list_topics(),
+        tracks=store.track_snapshot(),
     )
     initial_json = initial_state.model_dump_json().replace("</", "<\\/")
     return DORA_WEB_BRIDGE_DASHBOARD_HTML.replace(
@@ -794,106 +815,95 @@ def _dashboard_html_with_initial_state(store: DoraWebTopicStore) -> str:
     )
 
 
-def _live_node_status_specs(*, web_bridge_port: int | None = None) -> tuple[NodeProcessSpec, ...]:
-    web_bridge_terms = ("bridges/dora_web_bridge/main.py",)
-    if web_bridge_port is not None:
-        web_bridge_terms = (
-            "bridges/dora_web_bridge/main.py",
-            "--port",
-            str(web_bridge_port),
-        )
-    return (
-        NodeProcessSpec(node_id="dora_web_bridge", required_terms=web_bridge_terms),
-        NodeProcessSpec(node_id="cpal_capture", required_terms=("cpal_capture", "--source-id")),
-        NodeProcessSpec(
-            node_id="alsa_pcm_capture",
-            required_terms=("nodes/audio_device/alsa_pcm_capture/main.py",),
-        ),
-        NodeProcessSpec(
-            node_id="pipewire_pcm_capture",
-            required_terms=("nodes/audio_device/pipewire_pcm_capture/main.py",),
-        ),
-        NodeProcessSpec(
-            node_id="media_graph_asr",
-            required_terms=("nodes/media_graph/main.py", "--output-stream-id", "audio/media_graph/asr"),
-        ),
-        NodeProcessSpec(node_id="vad", required_terms=("nodes/vad/silero/main.py",)),
-        NodeProcessSpec(
-            node_id="turn_detector",
-            required_terms=("nodes/vad/turn_detector/main.py",),
-        ),
-        NodeProcessSpec(
-            node_id="asr_control_from_turn",
-            required_terms=("nodes/asr/asr_control_from_turn/main.py",),
-        ),
-        NodeProcessSpec(
-            node_id="nemotron_streaming",
-            required_terms=("nodes/asr/nemotron_streaming/main.py",),
-        ),
-        NodeProcessSpec(
-            node_id="dialogue_engine",
-            required_terms=("nodes/dialogue_engine/main.py",),
-        ),
-        NodeProcessSpec(
-            node_id="codex_app_server",
-            required_terms=("nodes/dialogue_engine/codex_app_server/main.py",),
-        ),
-        NodeProcessSpec(node_id="tts_backend", required_terms=("nodes/tts/tts_backend/main.py",)),
-        NodeProcessSpec(
-            node_id="playback_queue",
-            required_terms=("nodes/playback/playback_queue/main.py",),
-        ),
-        NodeProcessSpec(
-            node_id="speaker_stream_adapter",
-            required_terms=("nodes/playback/speaker_stream_adapter/main.py",),
-        ),
-        NodeProcessSpec(
-            node_id="media_graph_speaker",
-            required_terms=("nodes/media_graph/main.py", "--input-source-id", "speaker_stream"),
-        ),
-        NodeProcessSpec(node_id="cpal_sink", required_terms=("cpal_sink", "--stream-id")),
-        NodeProcessSpec(
-            node_id="tts_pyopenjtalk_server",
-            required_terms=("nodes/tts/tts_pyopenjtalk_server/main.py",),
-        ),
-        NodeProcessSpec(node_id="vllm", required_terms=("vllm", "serve")),
-    )
+def _node_ids_from_dataflow(dataflow_path: Path) -> tuple[str, ...]:
+    if not dataflow_path.is_absolute():
+        raise DoraWebBridgeError("Dataflow path must be absolute")
+    if not dataflow_path.exists():
+        raise DoraWebBridgeError(f"Dataflow does not exist: {dataflow_path}")
+    if not dataflow_path.is_file():
+        raise DoraWebBridgeError(f"Dataflow path is not a file: {dataflow_path}")
 
-
-def _read_process_table() -> tuple[ProcessSnapshot, ...]:
-    result = subprocess.run(
-        ("ps", "-eo", "pid=,args="),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise DoraWebBridgeError("Failed to read local process table")
-    processes: list[ProcessSnapshot] = []
-    for line in result.stdout.splitlines():
+    node_ids: list[str] = []
+    seen: set[str] = set()
+    in_nodes = False
+    try:
+        lines = dataflow_path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise DoraWebBridgeError(f"Dataflow cannot be read: {exc}") from exc
+    for line in lines:
         stripped = line.strip()
-        if not stripped:
+        if stripped == "nodes:":
+            in_nodes = True
             continue
-        pid_text, _separator, command = stripped.partition(" ")
-        if not command:
+        if not in_nodes or not stripped.startswith("- id:"):
             continue
-        try:
-            pid = int(pid_text)
-        except ValueError as exc:
-            raise DoraWebBridgeError("Process table contained a non-integer pid") from exc
-        processes.append(ProcessSnapshot(pid=pid, command=command.strip()))
-    return tuple(processes)
+        node_id = _plain_yaml_value(stripped.removeprefix("- id:").strip())
+        if not node_id:
+            raise DoraWebBridgeError(f"Dataflow node id must not be empty: {dataflow_path}")
+        if node_id in seen:
+            raise DoraWebBridgeError(f"Dataflow node id is duplicated: {node_id}")
+        seen.add(node_id)
+        node_ids.append(node_id)
+    if not node_ids:
+        raise DoraWebBridgeError(f"Dataflow has no nodes[].id entries: {dataflow_path}")
+    return tuple(node_ids)
 
 
-def _matching_processes(
-    processes: tuple[ProcessSnapshot, ...],
-    spec: NodeProcessSpec,
-) -> tuple[ProcessSnapshot, ...]:
-    return tuple(
-        process
-        for process in processes
-        if all(term in process.command for term in spec.required_terms)
-    )
+def _plain_yaml_value(value: str) -> str:
+    if len(value) >= 2 and value[0] in ("'", '"') and value[-1] == value[0]:
+        return value[1:-1]
+    return value
+
+
+def _latest_spawned_pids(runtime_log_path: Path | None) -> dict[str, int]:
+    if runtime_log_path is None or not runtime_log_path.is_file():
+        return {}
+    pids: dict[str, int] = {}
+    try:
+        with runtime_log_path.open("r", encoding="utf-8", errors="replace") as log_file:
+            for line in log_file:
+                parsed = _spawned_pid_from_log_line(line.rstrip("\n"))
+                if parsed is not None:
+                    node_id, pid = parsed
+                    pids[node_id] = pid
+    except OSError:
+        return {}
+    return pids
+
+
+def _spawned_pid_from_log_line(line: str) -> tuple[str, int] | None:
+    marker = ": spawner  spawned node with pid "
+    prefix, separator, pid_text = line.partition(marker)
+    if separator == "":
+        return None
+    node_id = prefix.rsplit(maxsplit=1)[-1]
+    try:
+        pid = int(pid_text.split(maxsplit=1)[0])
+    except (IndexError, ValueError):
+        return None
+    return (node_id, pid)
+
+
+def _pid_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _command_for_pid(pid: int) -> str | None:
+    cmdline_path = Path("/proc") / str(pid) / "cmdline"
+    if not cmdline_path.is_file():
+        return None
+    try:
+        raw = cmdline_path.read_bytes()
+    except OSError:
+        return None
+    command = raw.replace(b"\0", b" ").decode("utf-8", errors="replace").strip()
+    return command or None
 
 
 def _runtime_log_line_matches_node(line: str, node_id: str) -> bool:
@@ -915,6 +925,44 @@ def _bounded_tail(
     if tail_count == 0:
         return ()
     return events[-tail_count:]
+
+
+def _track_topic_for_event(event: WebBridgeProjection) -> WebTrackTopic:
+    if event.event_type == "session_state":
+        return "session/state"
+    if event.event_type == "audio_level":
+        return "audio/level"
+    if event.event_type == "audio_activity":
+        return "vad/activity"
+    if event.event_type == "turn":
+        return "vad/turn"
+    if event.event_type == "asr_control":
+        return "asr/control"
+    if event.event_type in ("transcript_delta", "transcript_partial", "transcript_final"):
+        return "asr/transcript"
+    if event.event_type == "dialogue_event":
+        return "dialogue/event"
+    if event.event_type == "agent_text_delta":
+        return "agent/text"
+    if event.event_type == "agent_turn_done":
+        return "agent/done"
+    if event.event_type == "approval_request":
+        return "agent/approval"
+    if event.event_type == "agent_user_input_request":
+        return "agent/user-input"
+    if event.event_type == "agent_mcp_elicitation_request":
+        return "agent/mcp-elicitation"
+    if event.event_type == "tool_event":
+        return "agent/tool"
+    if event.event_type == "tts_text":
+        return "tts/text"
+    if event.event_type == "barge_in":
+        return "barge-in/event"
+    if event.event_type == "playback_state":
+        return "playback/state"
+    if event.event_type == "playback_done":
+        return "playback/done"
+    assert_never(event)
 
 
 def _event_selected_by_topics(
@@ -1017,6 +1065,20 @@ def _after_offset_from_query(query: str) -> int:
     return after_offset
 
 
+def _after_offset_from_request(query: str, headers: http.client.HTTPMessage) -> int:
+    after_offset = _after_offset_from_query(query)
+    last_event_id = headers.get("Last-Event-ID")
+    if last_event_id is None:
+        return after_offset
+    try:
+        last_offset = int(last_event_id)
+    except ValueError as exc:
+        raise DoraWebBridgeError("Last-Event-ID must be an integer") from exc
+    if last_offset < 0:
+        raise DoraWebBridgeError("Last-Event-ID must be non-negative")
+    return max(after_offset, last_offset + 1)
+
+
 def _node_log_tail_count_from_query(query: str) -> int:
     tail_count = _tail_count_from_query(query)
     if tail_count is None:
@@ -1071,7 +1133,10 @@ def _send_bytes(
     handler.send_header("Content-Type", content_type)
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
-    handler.wfile.write(body)
+    try:
+        handler.wfile.write(body)
+    except (BrokenPipeError, ConnectionResetError):
+        return
 
 
 def _send_global_event_stream(
@@ -1101,10 +1166,14 @@ def _send_global_event_stream(
                 return
             continue
         for event in events:
+            track_topic = _track_topic_for_event(event.event)
             body = (
                 f"id: {event.global_offset}\n"
                 "event: dora-topic-event\n"
                 f"data: {event.model_dump_json()}\n\n"
+                f"id: {event.global_offset}\n"
+                f"event: {track_topic}\n"
+                f"data: {event.event.model_dump_json()}\n\n"
             ).encode("utf-8")
             try:
                 handler.wfile.write(body)

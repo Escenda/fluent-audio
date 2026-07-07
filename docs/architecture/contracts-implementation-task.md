@@ -4,7 +4,7 @@ This task is for the implementation subagent that will turn `contracts` from sca
 
 ## Goal
 
-Implement the typed contracts required by the first fluent-audio vertical slice:
+Implement the typed contracts required by the first fluent-dialogue-dora vertical slice:
 
 ```text
 raw PCM source/sink
@@ -22,7 +22,7 @@ This is not a demo layer. These contracts are the package-level boundary used by
 
 Allowed paths:
 
-- `src/fluent_audio/contracts/`
+- `src/fluent_dialogue_dora/contracts/`
 - `tests/contracts/`
 - `docs/architecture/build-plan.md`, only after the representative verification passes
 
@@ -30,8 +30,8 @@ Do not touch:
 
 - `nodes/`
 - `graphs/`
-- `src/fluent_audio/dora/`
-- `src/fluent_audio/offline/`
+- `src/fluent_dialogue_dora/dora/`
+- `src/fluent_dialogue_dora/offline/`
 - `pyproject.toml`, unless a dependency is truly required and explicitly justified in the report
 
 ## Required Contract Modules
@@ -41,7 +41,7 @@ Use Pydantic v2 `BaseModel` for boundary payloads. Use `Literal`, `Enum`, and co
 Suggested module split:
 
 ```text
-src/fluent_audio/contracts/
+src/fluent_dialogue_dora/contracts/
 ├── __init__.py
 ├── audio.py
 ├── activity.py

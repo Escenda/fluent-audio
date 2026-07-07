@@ -13,9 +13,8 @@ import queue
 import subprocess
 import sys
 import threading
-import time
 import urllib.parse
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Annotated, Literal, Protocol, TextIO, TypeAlias
@@ -26,7 +25,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentApprovalRequest,
     AgentApprovalResponse,
     AgentApprovalScope,
@@ -43,7 +42,7 @@ from fluent_audio.contracts import (
     AgentUserInputResponse,
     JsonValue,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     decode_agent_cancel_request_from_dora,
     decode_agent_mcp_elicitation_response_from_dora,
     decode_agent_turn_request_from_dora,
@@ -213,7 +212,6 @@ class CodexAppServerConfig(BaseModel):
     command: tuple[str, ...] = ("codex", "app-server", "--listen", "stdio://")
     timeout_seconds: float = Field(default=30.0, gt=0.0)
     approval_response_timeout_seconds: float = Field(default=300.0, gt=0.0)
-    poll_dora_control_during_approval: bool = False
     cwd: str | None = None
     model: str | None = None
     model_provider: str | None = Field(default=None, alias="modelProvider")
@@ -222,7 +220,7 @@ class CodexAppServerConfig(BaseModel):
     sandbox: CodexSandboxMode | None = None
     approval_policy: ApprovalPolicy | None = Field(default="on-request", alias="approvalPolicy")
     approvals_reviewer: ApprovalsReviewer | None = Field(default="user", alias="approvalsReviewer")
-    client_name: str = Field(default="fluent-audio", min_length=1)
+    client_name: str = Field(default="fluent-dialogue-dora", min_length=1)
     client_version: str = Field(default="0.0.0", min_length=1)
 
     @model_validator(mode="after")
@@ -606,6 +604,15 @@ class CodexJsonRpcErrorResponse(BaseModel):
     error: CodexJsonRpcErrorBody
 
 
+class CodexJsonRpcSuccessResponse(BaseModel):
+    """Generic JSON-RPC success response used only for request-id routing."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    id: str = Field(min_length=1)
+    result: JsonValue
+
+
 class CodexConfigWarningParams(BaseModel):
     """Codex config warning notification params."""
 
@@ -645,7 +652,7 @@ class CodexDeprecationNoticeEnvelope(BaseModel):
     """Codex deprecation notice notification.
 
     This is an app-server lifecycle notice, not a turn-stream event. The payload
-    is intentionally ignored because fluent-audio only needs to keep the JSON-RPC
+    is intentionally ignored because fluent-dialogue-dora only needs to keep the JSON-RPC
     stream aligned.
     """
 
@@ -683,7 +690,7 @@ class CodexMcpStartupStatusUpdatedEnvelope(BaseModel):
     """Codex MCP server startup status notification.
 
     This method is an app-server lifecycle notification, not a turn-stream event.
-    The payload is intentionally not projected into the fluent-audio contract.
+    The payload is intentionally not projected into the fluent-dialogue-dora contract.
     """
 
     model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
@@ -713,6 +720,14 @@ class CodexAccountRateLimitsUpdatedEnvelope(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
 
     method: Literal["account/rateLimits/updated"]
+
+
+class CodexHookNotificationEnvelope(BaseModel):
+    """Codex hook lifecycle notification."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    method: Literal["hook/started", "hook/completed"]
 
 
 class CodexAgentMessageDeltaParams(BaseModel):
@@ -824,6 +839,7 @@ class CodexMcpToolCallItem(BaseModel):
     server: str = Field(min_length=1)
     tool: str = Field(min_length=1)
     status: CodexToolCallStatus
+    result: "CodexToolCallResult | None" = None
 
     def tool_name(self) -> str:
         return f"{self.server}.{self.tool}"
@@ -839,11 +855,29 @@ class CodexDynamicToolCallItem(BaseModel):
     namespace: str | None = None
     tool: str = Field(min_length=1)
     status: CodexToolCallStatus
+    result: "CodexToolCallResult | None" = None
 
     def tool_name(self) -> str:
         if self.namespace is None:
             return self.tool
         return f"{self.namespace}.{self.tool}"
+
+
+class CodexToolCallTextContent(BaseModel):
+    """Subset of tool-call result text content."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    type: Literal["text"]
+    text: str
+
+
+class CodexToolCallResult(BaseModel):
+    """Subset of a Codex tool-call result."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    content: tuple[CodexToolCallTextContent, ...] | None = None
 
 
 class CodexCommandExecutionItem(BaseModel):
@@ -898,8 +932,8 @@ class CodexItemLifecycleParams(BaseModel):
         populate_by_name=True,
     )
 
-    thread_id: str = Field(alias="threadId", min_length=1)
-    turn_id: str = Field(alias="turnId", min_length=1)
+    thread_id: str | None = Field(default=None, alias="threadId", min_length=1)
+    turn_id: str | None = Field(default=None, alias="turnId", min_length=1)
     item: CodexLifecycleItemEnvelope
 
 
@@ -1180,6 +1214,7 @@ CodexIgnorableNotification: TypeAlias = (
     | CodexThreadStatusChangedEnvelope
     | CodexThreadTokenUsageUpdatedEnvelope
     | CodexAccountRateLimitsUpdatedEnvelope
+    | CodexHookNotificationEnvelope
 )
 CodexIgnorableNotificationEnvelope: TypeAlias = Annotated[
     CodexIgnorableNotification,
@@ -1350,9 +1385,6 @@ ProjectedAppServerEvent: TypeAlias = (
     | ProjectedMcpElicitationRequestEvent
     | ProjectedToolEvent
 )
-AgentApprovalControlEvent: TypeAlias = AgentApprovalResponse | AgentCancelRequest
-AgentUserInputControlEvent: TypeAlias = AgentUserInputResponse | AgentCancelRequest
-AgentMcpElicitationControlEvent: TypeAlias = AgentMcpElicitationResponse | AgentCancelRequest
 ApprovalResponsePathParts: TypeAlias = tuple[str, str, str]
 
 
@@ -1573,6 +1605,17 @@ class TurnProjectionState(BaseModel):
         return TurnProjectionState(next_seq=self.next_seq + 1)
 
 
+class CodexTurnStreamState(BaseModel):
+    """Active Codex turn stream plus projection cursor."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    request: AgentTurnRequest
+    active_turn: CodexActiveTurn
+    projection: TurnProjectionState = Field(default_factory=TurnProjectionState)
+    done_seen: bool = False
+
+
 def _read_text_stream_lines(
     stream: TextIO,
     destination: queue.Queue[str | None],
@@ -1587,8 +1630,17 @@ def _read_text_stream_lines(
 class CodexAppServerTransport(Protocol):
     """Codex app-server boundary used by the node runtime and tests."""
 
-    def stream_turn(self, request: AgentTurnRequest) -> Iterable[ProjectedAppServerEvent]:
-        """Start one Codex turn and return projected DORA-facing events."""
+    def bind_dora_outputs(
+        self,
+        node,
+        control_queue: CodexControlQueue,
+        *,
+        approval_response_timeout_seconds: float,
+    ) -> None:
+        """Attach the DORA output sink used by Codex stdout handlers."""
+
+    def start_turn(self, request: AgentTurnRequest) -> None:
+        """Start one Codex turn without blocking for completion."""
 
     def respond_approval(self, response: AgentApprovalResponse) -> None:
         """Resolve one pending Codex approval request."""
@@ -1601,6 +1653,15 @@ class CodexAppServerTransport(Protocol):
 
     def interrupt_turn(self, request: AgentCancelRequest) -> None:
         """Interrupt the currently active Codex turn for the session."""
+
+    def raise_if_failed(self) -> None:
+        """Raise a background stdout/control error, if one occurred."""
+
+    def assert_idle(self) -> None:
+        """Validate that no Codex turn is still active before shutdown."""
+
+    def output_summary(self) -> CodexAppServerTurnStreamSummary:
+        """Return counters for Codex-originated DORA outputs."""
 
 
 class SubprocessCodexJsonRpcTransport:
@@ -1615,6 +1676,29 @@ class SubprocessCodexJsonRpcTransport:
         self._pending_user_input_by_id: dict[str, PendingCodexUserInputRequest] = {}
         self._pending_mcp_elicitation_by_id: dict[str, PendingCodexMcpElicitationRequest] = {}
         self._pending_messages: list[CodexServerMessage] = []
+        self._turn_start_in_flight = False
+        self._turn_start_thread_id: str | None = None
+        self._turn_start_pending_messages: list[CodexServerMessage] = []
+        self._active_stream: CodexTurnStreamState | None = None
+        self._node = None
+        self._control_queue: CodexControlQueue | None = None
+        self._approval_response_timeout_seconds = config.approval_response_timeout_seconds
+        self._state_lock = threading.RLock()
+        self._send_output_lock = threading.Lock()
+        self._write_lock = threading.Lock()
+        self._response_condition = threading.Condition()
+        self._response_line_by_id: dict[str, str] = {}
+        self._response_error_by_id: dict[str, CodexJsonRpcErrorResponse] = {}
+        self._stdout_error: CodexAppServerNodeError | None = None
+        self._text_deltas = 0
+        self._turn_done = 0
+        self._approval_requests = 0
+        self._approval_responses = 0
+        self._user_input_requests = 0
+        self._user_input_responses = 0
+        self._mcp_elicitation_requests = 0
+        self._mcp_elicitation_responses = 0
+        self._tool_events = 0
         self._process = subprocess.Popen(
             config.command,
             stdin=subprocess.PIPE,
@@ -1630,11 +1714,10 @@ class SubprocessCodexJsonRpcTransport:
         stderr = self._process.stderr
         if stderr is None:
             raise CodexAppServerNodeError("Codex app-server stderr is not available")
-        self._stdout_lines: queue.Queue[str | None] = queue.Queue()
         self._stderr_lines: queue.Queue[str | None] = queue.Queue()
         self._stdout_reader = threading.Thread(
-            target=_read_text_stream_lines,
-            args=(stdout, self._stdout_lines),
+            target=self._read_codex_stdout_loop,
+            args=(stdout,),
             daemon=True,
         )
         self._stderr_reader = threading.Thread(
@@ -1662,59 +1745,125 @@ class SubprocessCodexJsonRpcTransport:
 
         return self._ensure_thread(session_id)
 
-    def stream_turn(self, request: AgentTurnRequest) -> Iterable[ProjectedAppServerEvent]:
+    def bind_dora_outputs(
+        self,
+        node,
+        control_queue: CodexControlQueue,
+        *,
+        approval_response_timeout_seconds: float,
+    ) -> None:
+        self._node = node
+        self._control_queue = control_queue
+        self._approval_response_timeout_seconds = approval_response_timeout_seconds
+
+    def start_turn(self, request: AgentTurnRequest) -> None:
+        with self._state_lock:
+            replaced_stream = self._active_stream
+            if replaced_stream is not None:
+                self._clear_active_stream(replaced_stream)
+            else:
+                replaced_stream = None
+        if replaced_stream is not None:
+            self._send_turn_interrupt(replaced_stream.active_turn)
         thread = self._ensure_thread(request.session_id)
-        turn_response = self._send_turn_start(thread, request)
-        active_turn = CodexActiveTurn(
-            session_id=request.session_id,
-            thread_id=thread.thread_id,
-            turn_id=turn_response.result.turn.id,
-        )
-        self._active_turn_by_session[request.session_id] = active_turn
+        with self._state_lock:
+            self._turn_start_in_flight = True
+            self._turn_start_thread_id = thread.thread_id
+            self._turn_start_pending_messages.clear()
         try:
-            yield from self._read_projected_turn_events(request, active_turn)
-        finally:
-            stored_active_turn = self._active_turn_by_session.get(request.session_id)
-            if stored_active_turn == active_turn:
-                del self._active_turn_by_session[request.session_id]
+            turn_response = self._send_turn_start(thread, request)
+        except Exception:
+            with self._state_lock:
+                self._turn_start_in_flight = False
+                self._turn_start_thread_id = None
+                self._turn_start_pending_messages.clear()
+            raise
+        with self._state_lock:
+            active_turn = CodexActiveTurn(
+                session_id=request.session_id,
+                thread_id=thread.thread_id,
+                turn_id=turn_response.result.turn.id,
+            )
+            self._active_turn_by_session[request.session_id] = active_turn
+            self._active_stream = CodexTurnStreamState(request=request, active_turn=active_turn)
+            self._turn_start_in_flight = False
+            self._turn_start_thread_id = None
+            pending_messages = (
+                *self._pending_messages,
+                *self._turn_start_pending_messages,
+            )
+            self._pending_messages.clear()
+            self._turn_start_pending_messages.clear()
+        for message in pending_messages:
+            self._handle_codex_server_message(message)
+
+    def _clear_active_stream(self, stream: CodexTurnStreamState) -> None:
+        stored_active_turn = self._active_turn_by_session.get(stream.request.session_id)
+        if stored_active_turn == stream.active_turn:
+            del self._active_turn_by_session[stream.request.session_id]
+        if self._active_stream == stream:
+            self._active_stream = None
 
     def respond_approval(self, response: AgentApprovalResponse) -> None:
-        pending = self._pending_approval_by_id.get(response.approval_id)
-        if pending is None:
-            raise CodexAppServerNodeError("approval response did not match a pending Codex request")
-        if pending.session_id != response.session_id:
-            raise CodexAppServerNodeError("approval response session_id did not match pending request")
-        if pending.user_turn_id != response.user_turn_id:
-            raise CodexAppServerNodeError(
-                "approval response user_turn_id did not match pending request"
-            )
+        with self._state_lock:
+            pending = self._pending_approval_by_id.get(response.approval_id)
+            if pending is None:
+                raise CodexAppServerNodeError(
+                    "approval response did not match a pending Codex request"
+                )
+            if pending.session_id != response.session_id:
+                raise CodexAppServerNodeError(
+                    "approval response session_id did not match pending request"
+                )
+            if pending.user_turn_id != response.user_turn_id:
+                raise CodexAppServerNodeError(
+                    "approval response user_turn_id did not match pending request"
+                )
+            del self._pending_approval_by_id[response.approval_id]
         self._write_model(_build_codex_approval_response(pending, response))
-        del self._pending_approval_by_id[response.approval_id]
+        with self._state_lock:
+            self._approval_responses += 1
 
     def respond_user_input(self, response: AgentUserInputResponse) -> None:
-        pending = self._pending_user_input_by_id.get(response.request_id)
-        if pending is None:
-            raise CodexAppServerNodeError(
-                "user-input response did not match a pending Codex request"
-            )
-        _validate_user_input_response_matches_pending(response, pending)
+        with self._state_lock:
+            pending = self._pending_user_input_by_id.get(response.request_id)
+            if pending is None:
+                raise CodexAppServerNodeError(
+                    "user-input response did not match a pending Codex request"
+                )
+            _validate_user_input_response_matches_pending(response, pending)
+            del self._pending_user_input_by_id[response.request_id]
         self._write_model(_build_codex_user_input_response(pending, response))
-        del self._pending_user_input_by_id[response.request_id]
+        with self._state_lock:
+            self._user_input_responses += 1
 
     def respond_mcp_elicitation(self, response: AgentMcpElicitationResponse) -> None:
-        pending = self._pending_mcp_elicitation_by_id.get(response.request_id)
-        if pending is None:
-            raise CodexAppServerNodeError(
-                "MCP elicitation response did not match a pending Codex request"
-            )
-        _validate_mcp_elicitation_response_matches_pending(response, pending)
+        with self._state_lock:
+            pending = self._pending_mcp_elicitation_by_id.get(response.request_id)
+            if pending is None:
+                raise CodexAppServerNodeError(
+                    "MCP elicitation response did not match a pending Codex request"
+                )
+            _validate_mcp_elicitation_response_matches_pending(response, pending)
+            del self._pending_mcp_elicitation_by_id[response.request_id]
         self._write_model(_build_codex_mcp_elicitation_response(pending, response))
-        del self._pending_mcp_elicitation_by_id[response.request_id]
+        with self._state_lock:
+            self._mcp_elicitation_responses += 1
 
     def interrupt_turn(self, request: AgentCancelRequest) -> None:
-        active_turn = self._active_turn_by_session.get(request.session_id)
-        if active_turn is None:
-            raise CodexAppServerNodeError("cannot interrupt Codex turn before turn/start")
+        with self._state_lock:
+            active_stream = self._active_stream
+            if (
+                active_stream is None
+                or active_stream.request.session_id != request.session_id
+                or active_stream.request.user_turn_id != request.user_turn_id
+            ):
+                return
+            active_turn = active_stream.active_turn
+            self._clear_active_stream(active_stream)
+        self._send_turn_interrupt(active_turn)
+
+    def _send_turn_interrupt(self, active_turn: CodexActiveTurn) -> None:
         request_id = self._next_request_id("turn-interrupt")
         params = CodexTurnInterruptParams(
             thread_id=active_turn.thread_id,
@@ -1724,7 +1873,183 @@ class SubprocessCodexJsonRpcTransport:
             CodexTurnInterruptJsonRpcRequest(id=request_id, params=params),
         )
         _ = self._read_turn_interrupt_response(request_id)
-        del self._active_turn_by_session[request.session_id]
+
+    def raise_if_failed(self) -> None:
+        with self._response_condition:
+            if self._stdout_error is not None:
+                raise self._stdout_error
+
+    def assert_idle(self) -> None:
+        self.raise_if_failed()
+        with self._state_lock:
+            if self._active_stream is not None and not self._active_stream.done_seen:
+                raise CodexAppServerNodeError(
+                    "Codex turn stream ended without exactly one turn_done"
+                )
+
+    def output_summary(self) -> CodexAppServerTurnStreamSummary:
+        with self._state_lock:
+            return CodexAppServerTurnStreamSummary(
+                text_deltas=self._text_deltas,
+                turn_done=self._turn_done,
+                approval_requests=self._approval_requests,
+                approval_responses=self._approval_responses,
+                user_input_requests=self._user_input_requests,
+                user_input_responses=self._user_input_responses,
+                mcp_elicitation_requests=self._mcp_elicitation_requests,
+                mcp_elicitation_responses=self._mcp_elicitation_responses,
+                cancel_requests=0,
+                tool_events=self._tool_events,
+            )
+
+    def _read_codex_stdout_loop(self, stdout: TextIO) -> None:
+        current_line = ""
+        try:
+            for line in stdout:
+                stripped = line.strip()
+                if stripped == "":
+                    continue
+                current_line = stripped
+                try:
+                    error_response = CodexJsonRpcErrorResponse.model_validate_json(stripped)
+                except ValueError:
+                    error_response = None
+                if error_response is not None:
+                    with self._response_condition:
+                        self._response_error_by_id[error_response.id] = error_response
+                        self._response_condition.notify_all()
+                    continue
+
+                try:
+                    success_response = CodexJsonRpcSuccessResponse.model_validate_json(stripped)
+                except ValueError:
+                    success_response = None
+                if success_response is not None:
+                    with self._response_condition:
+                        self._response_line_by_id[success_response.id] = stripped
+                        self._response_condition.notify_all()
+                    continue
+
+                if parse_codex_ignorable_notification_line(stripped) is not None:
+                    continue
+                message = parse_codex_server_message_line(stripped)
+                if message is not None:
+                    self._handle_codex_server_message(message)
+        except CodexAppServerNodeError as exc:
+            self._set_stdout_error(exc)
+        except ValueError:
+            self._set_stdout_error(
+                CodexAppServerNodeError(
+                    f"Codex stdout line is invalid: {_preview_line(current_line)}"
+                )
+            )
+        finally:
+            if self._process.poll() is None:
+                self._set_stdout_error(CodexAppServerNodeError("Codex app-server stdout closed"))
+
+    def _set_stdout_error(self, error: CodexAppServerNodeError) -> None:
+        with self._response_condition:
+            if self._stdout_error is None:
+                self._stdout_error = error
+            self._response_condition.notify_all()
+
+    def _handle_codex_server_message(self, message: CodexServerMessage) -> None:
+        node = self._node
+        if node is None:
+            with self._state_lock:
+                self._pending_messages.append(message)
+            return
+
+        with self._state_lock:
+            stream = self._active_stream
+            if stream is None:
+                if (
+                    self._turn_start_in_flight
+                    and message.params.thread_id == self._turn_start_thread_id
+                ):
+                    self._turn_start_pending_messages.append(message)
+                return
+            if stream.done_seen:
+                raise CodexAppServerNodeError("Codex emitted event after turn_done")
+            try:
+                event = project_codex_server_message(
+                    stream.request,
+                    stream.active_turn,
+                    message,
+                    seq=stream.projection.next_seq,
+                )
+            except CodexAppServerNodeError as exc:
+                if _is_stale_codex_turn_message(exc):
+                    return
+                raise
+            if event is None:
+                return
+            self._track_pending_server_request(stream.request, message, event)
+            next_stream = stream.model_copy(
+                update={
+                    "projection": stream.projection.advance(),
+                    "done_seen": isinstance(event, ProjectedTurnDoneEvent),
+                }
+            )
+            self._active_stream = next_stream
+            if isinstance(event, ProjectedTextDeltaEvent):
+                self._text_deltas += 1
+            elif isinstance(event, ProjectedTurnDoneEvent):
+                self._turn_done += 1
+                self._clear_active_stream(next_stream)
+            elif isinstance(event, ProjectedApprovalRequestEvent):
+                self._approval_requests += 1
+            elif isinstance(event, ProjectedUserInputRequestEvent):
+                self._user_input_requests += 1
+            elif isinstance(event, ProjectedMcpElicitationRequestEvent):
+                self._mcp_elicitation_requests += 1
+            elif isinstance(event, ProjectedToolEvent):
+                self._tool_events += 1
+
+        with self._send_output_lock:
+            if isinstance(event, ProjectedTextDeltaEvent):
+                _send_agent_text(node, event.to_contract())
+            elif isinstance(event, ProjectedTurnDoneEvent):
+                _send_agent_done(node, event.to_contract())
+            elif isinstance(event, ProjectedApprovalRequestEvent):
+                control_queue = self._control_queue
+                if control_queue is None:
+                    raise CodexAppServerNodeError("Codex approval arrived before control queue bind")
+                control_queue.mark_pending_approval(event)
+                _send_agent_approval(node, event.to_contract())
+                approval_thread = threading.Thread(
+                    target=self._wait_and_respond_approval,
+                    args=(event,),
+                    daemon=True,
+                )
+                approval_thread.start()
+            elif isinstance(event, ProjectedUserInputRequestEvent):
+                _send_agent_user_input_request(node, event.to_contract())
+            elif isinstance(event, ProjectedMcpElicitationRequestEvent):
+                _send_agent_mcp_elicitation_request(node, event.to_contract())
+            elif isinstance(event, ProjectedToolEvent):
+                _send_agent_tool(node, event.to_contract())
+
+    def _wait_and_respond_approval(self, approval: ProjectedApprovalRequestEvent) -> None:
+        control_queue = self._control_queue
+        if control_queue is None:
+            self._set_stdout_error(
+                CodexAppServerNodeError("approval response wait started before control queue bind")
+            )
+            return
+        try:
+            response = control_queue.wait_for_approval_response(
+                approval,
+                timeout_seconds=self._approval_response_timeout_seconds,
+            )
+            if response is None:
+                raise CodexAppServerNodeError("timed out waiting for approval response")
+            _validate_approval_response_matches_request(response, approval)
+            self.respond_approval(response)
+        except CodexAppServerNodeError as exc:
+            self._set_stdout_error(exc)
+        finally:
+            control_queue.cancel_pending_approval(approval)
 
     def _initialize(self) -> None:
         request_id = self._next_request_id("initialize")
@@ -1769,15 +2094,10 @@ class SubprocessCodexJsonRpcTransport:
         return thread
 
     def _read_initialize_response(self, request_id: str) -> CodexInitializeJsonRpcResponse:
-        while True:
-            line = self._read_line()
-            try:
-                response = CodexInitializeJsonRpcResponse.model_validate_json(line)
-            except ValueError:
-                self._handle_non_response_line(line, request_id)
-                continue
-            self._validate_response_id(response.id, request_id)
-            return response
+        line = self._wait_response_line(request_id)
+        response = CodexInitializeJsonRpcResponse.model_validate_json(line)
+        self._validate_response_id(response.id, request_id)
+        return response
 
     def _send_turn_start(
         self,
@@ -1797,28 +2117,6 @@ class SubprocessCodexJsonRpcTransport:
                 f"turn/start returned unexpected status {response.result.turn.status!r}"
             )
         return response
-
-    def _read_projected_turn_events(
-        self,
-        turn: AgentTurnRequest,
-        active_turn: CodexActiveTurn,
-    ) -> Iterable[ProjectedAppServerEvent]:
-        projection = TurnProjectionState()
-        while True:
-            message = self._read_next_server_message()
-            event = project_codex_server_message(
-                turn,
-                active_turn,
-                message,
-                seq=projection.next_seq,
-            )
-            if event is None:
-                continue
-            self._track_pending_server_request(turn, message, event)
-            projection = projection.advance()
-            yield event
-            if isinstance(event, ProjectedTurnDoneEvent):
-                return
 
     def _track_pending_server_request(
         self,
@@ -1905,91 +2203,59 @@ class SubprocessCodexJsonRpcTransport:
         )
 
     def _read_thread_start_response(self, request_id: str) -> CodexThreadStartJsonRpcResponse:
-        while True:
-            line = self._read_line()
-            try:
-                response = CodexThreadStartJsonRpcResponse.model_validate_json(line)
-            except ValueError:
-                self._handle_non_response_line(line, request_id)
-                continue
-            self._validate_response_id(response.id, request_id)
-            return response
+        line = self._wait_response_line(request_id)
+        response = CodexThreadStartJsonRpcResponse.model_validate_json(line)
+        self._validate_response_id(response.id, request_id)
+        return response
 
     def _read_turn_start_response(self, request_id: str) -> CodexTurnStartJsonRpcResponse:
-        while True:
-            line = self._read_line()
-            try:
-                response = CodexTurnStartJsonRpcResponse.model_validate_json(line)
-            except ValueError:
-                self._handle_non_response_line(line, request_id)
-                continue
-            self._validate_response_id(response.id, request_id)
-            return response
+        line = self._wait_response_line(request_id)
+        response = CodexTurnStartJsonRpcResponse.model_validate_json(line)
+        self._validate_response_id(response.id, request_id)
+        return response
 
     def _read_turn_interrupt_response(
         self,
         request_id: str,
     ) -> CodexTurnInterruptJsonRpcResponse:
-        while True:
-            line = self._read_line()
-            try:
-                response = CodexTurnInterruptJsonRpcResponse.model_validate_json(line)
-            except ValueError:
-                self._handle_non_response_line(line, request_id)
-                continue
-            self._validate_response_id(response.id, request_id)
-            return response
+        line = self._wait_response_line(request_id)
+        response = CodexTurnInterruptJsonRpcResponse.model_validate_json(line)
+        self._validate_response_id(response.id, request_id)
+        return response
 
-    def _handle_non_response_line(self, line: str, request_id: str) -> None:
-        try:
-            error_response = CodexJsonRpcErrorResponse.model_validate_json(line)
-        except ValueError:
-            if parse_codex_ignorable_notification_line(line) is not None:
-                return
-            message = parse_codex_server_message_line(line)
-            if message is None:
-                return
-            self._pending_messages.append(message)
-            return
-        self._validate_response_id(error_response.id, request_id)
-        raise CodexAppServerNodeError(
-            f"Codex JSON-RPC error {error_response.error.code}: "
-            f"{error_response.error.message}"
-        )
-
-    def _read_next_server_message(self) -> CodexServerMessage:
-        if self._pending_messages:
-            return self._pending_messages.pop(0)
-        while True:
-            line = self._read_line()
-            if parse_codex_ignorable_notification_line(line) is not None:
-                continue
-            message = parse_codex_server_message_line(line)
-            if message is not None:
-                return message
-
-    def _read_line(self) -> str:
-        try:
-            line = self._stdout_lines.get(timeout=self._config.timeout_seconds)
-        except queue.Empty:
-            stderr_output = self._read_stderr_tail()
-            if self._process.poll() is not None:
-                raise CodexAppServerNodeError(
-                    "Codex app-server exited before producing a complete response: "
-                    f"{stderr_output}"
-                )
-            if stderr_output:
-                raise CodexAppServerNodeError(
-                    "timed out waiting for Codex app-server output; stderr: "
-                    f"{stderr_output}"
-                )
-            raise CodexAppServerNodeError("timed out waiting for Codex app-server output")
-        if line is None:
-            stderr_output = self._read_stderr_tail()
-            raise CodexAppServerNodeError(
-                f"Codex app-server exited before producing a complete response: {stderr_output}"
+    def _wait_response_line(self, request_id: str) -> str:
+        with self._response_condition:
+            response_ready = self._response_condition.wait_for(
+                lambda: request_id in self._response_line_by_id
+                or request_id in self._response_error_by_id
+                or self._stdout_error is not None,
+                timeout=self._config.timeout_seconds,
             )
-        return line
+            if not response_ready:
+                stderr_output = self._read_stderr_tail()
+                if self._process.poll() is not None:
+                    raise CodexAppServerNodeError(
+                        "Codex app-server exited before producing a complete response: "
+                        f"{stderr_output}"
+                    )
+                if stderr_output:
+                    raise CodexAppServerNodeError(
+                        "timed out waiting for Codex app-server output; stderr: "
+                        f"{stderr_output}"
+                    )
+                raise CodexAppServerNodeError("timed out waiting for Codex app-server output")
+            error_response = self._response_error_by_id.pop(request_id, None)
+            if error_response is not None:
+                raise CodexAppServerNodeError(
+                    f"Codex JSON-RPC error {error_response.error.code}: "
+                    f"{error_response.error.message}"
+                )
+            response_line = self._response_line_by_id.pop(request_id, None)
+            if response_line is not None:
+                return response_line
+            if self._stdout_error is not None:
+                raise self._stdout_error
+            raise CodexAppServerNodeError("Codex response waiter woke without response")
 
     def _read_stderr_tail(self) -> str:
         lines: list[str] = []
@@ -2008,14 +2274,15 @@ class SubprocessCodexJsonRpcTransport:
         stdin = self._process.stdin
         if stdin is None:
             raise CodexAppServerNodeError("Codex app-server stdin is not available")
-        exclude_none = not isinstance(message, CodexMcpElicitationJsonRpcResponse)
-        stdin.write(message.model_dump_json(by_alias=True, exclude_none=exclude_none))
-        stdin.write("\n")
-        stdin.flush()
+        with self._write_lock:
+            exclude_none = not isinstance(message, CodexMcpElicitationJsonRpcResponse)
+            stdin.write(message.model_dump_json(by_alias=True, exclude_none=exclude_none))
+            stdin.write("\n")
+            stdin.flush()
 
     def _next_request_id(self, prefix: str) -> str:
         self._request_seq += 1
-        return f"fluent-audio/{prefix}/{self._request_seq}"
+        return f"fluent-dialogue-dora/{prefix}/{self._request_seq}"
 
     def _validate_response_id(self, response_id: str, request_id: str) -> None:
         if response_id != request_id:
@@ -2033,7 +2300,9 @@ def parse_codex_server_message_line(line: str) -> CodexServerMessage | None:
     try:
         return CODEX_SERVER_MESSAGE_ADAPTER.validate_json(stripped)
     except ValueError as exc:
-        raise CodexAppServerNodeError("Codex server message line is invalid") from exc
+        raise CodexAppServerNodeError(
+            f"Codex server message line is invalid: {_preview_line(stripped)}"
+        ) from exc
 
 
 def parse_codex_ignorable_notification_line(line: str) -> CodexIgnorableNotification | None:
@@ -2046,6 +2315,13 @@ def parse_codex_ignorable_notification_line(line: str) -> CodexIgnorableNotifica
         return CODEX_IGNORABLE_NOTIFICATION_ADAPTER.validate_json(stripped)
     except ValueError:
         return None
+
+
+def _preview_line(line: str, *, limit: int = 500) -> str:
+    escaped = line.encode("unicode_escape").decode("ascii")
+    if len(escaped) <= limit:
+        return escaped
+    return f"{escaped[:limit]}...<truncated>"
 
 
 def project_codex_server_message(
@@ -2086,7 +2362,10 @@ def project_codex_server_message(
             f"Codex emitted {retry_state} turn error: {message.params.error.message}"
         )
     if isinstance(message, CodexItemStartedEnvelope | CodexItemCompletedEnvelope):
-        _validate_message_turn(active_turn, message.params.thread_id, message.params.turn_id)
+        if (message.params.thread_id is None) != (message.params.turn_id is None):
+            raise CodexAppServerNodeError("Codex item lifecycle event had partial turn identity")
+        if message.params.thread_id is not None and message.params.turn_id is not None:
+            _validate_message_turn(active_turn, message.params.thread_id, message.params.turn_id)
         if isinstance(
             message.params.item,
             CodexCommandExecutionItem | CodexFileChangeItem | CodexMessageLifecycleItem,
@@ -2122,7 +2401,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dora", action="store_true")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--approval-response-timeout-seconds", type=float, default=300.0)
-    parser.add_argument("--poll-dora-control-during-approval", action="store_true")
     parser.add_argument("--cwd")
     parser.add_argument("--model")
     parser.add_argument("--model-provider")
@@ -2268,7 +2546,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         command=command,
         timeout_seconds=args.timeout_seconds,
         approval_response_timeout_seconds=args.approval_response_timeout_seconds,
-        poll_dora_control_during_approval=args.poll_dora_control_during_approval,
         cwd=args.cwd,
         model=args.model,
         model_provider=args.model_provider,
@@ -2296,7 +2573,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             transport,
             control_queue=control_queue,
             approval_response_timeout_seconds=config.approval_response_timeout_seconds,
-            poll_dora_control_during_approval=config.poll_dora_control_during_approval,
         )
     finally:
         if control_server is not None:
@@ -2362,55 +2638,53 @@ def run_codex_app_server_events(
     *,
     control_queue: CodexControlQueue | None = None,
     approval_response_timeout_seconds: float = 300.0,
-    poll_dora_control_during_approval: bool = False,
 ) -> CodexAppServerSummary:
     if control_queue is None:
         control_queue = CodexControlQueue()
     turn_requests = 0
     cancel_requests = 0
-    text_deltas = 0
-    turn_done = 0
-    approval_requests = 0
-    approval_responses = 0
-    user_input_requests = 0
-    user_input_responses = 0
-    mcp_elicitation_requests = 0
-    mcp_elicitation_responses = 0
-    tool_events = 0
+    transport.bind_dora_outputs(
+        node,
+        control_queue,
+        approval_response_timeout_seconds=approval_response_timeout_seconds,
+    )
 
     for event in node:
-        if event is None:
-            raise CodexAppServerNodeError("DORA event stream ended before STOP")
+        transport.raise_if_failed()
         event_type = _required_event_text(event, "type")
         if event_type == "STOP":
+            transport.assert_idle()
+            output_summary = transport.output_summary()
             return CodexAppServerSummary(
                 turn_requests=turn_requests,
                 cancel_requests=cancel_requests,
-                text_deltas=text_deltas,
-                turn_done=turn_done,
-                approval_requests=approval_requests,
-                approval_responses=approval_responses,
-                user_input_requests=user_input_requests,
-                user_input_responses=user_input_responses,
-                mcp_elicitation_requests=mcp_elicitation_requests,
-                mcp_elicitation_responses=mcp_elicitation_responses,
-                tool_events=tool_events,
+                text_deltas=output_summary.text_deltas,
+                turn_done=output_summary.turn_done,
+                approval_requests=output_summary.approval_requests,
+                approval_responses=output_summary.approval_responses,
+                user_input_requests=output_summary.user_input_requests,
+                user_input_responses=output_summary.user_input_responses,
+                mcp_elicitation_requests=output_summary.mcp_elicitation_requests,
+                mcp_elicitation_responses=output_summary.mcp_elicitation_responses,
+                tool_events=output_summary.tool_events,
             )
         if event_type == "INPUT_CLOSED":
             input_id = _required_event_text(event, "id")
             if input_id == "agent_turn":
+                transport.assert_idle()
+                output_summary = transport.output_summary()
                 return CodexAppServerSummary(
                     turn_requests=turn_requests,
                     cancel_requests=cancel_requests,
-                    text_deltas=text_deltas,
-                    turn_done=turn_done,
-                    approval_requests=approval_requests,
-                    approval_responses=approval_responses,
-                    user_input_requests=user_input_requests,
-                    user_input_responses=user_input_responses,
-                    mcp_elicitation_requests=mcp_elicitation_requests,
-                    mcp_elicitation_responses=mcp_elicitation_responses,
-                    tool_events=tool_events,
+                    text_deltas=output_summary.text_deltas,
+                    turn_done=output_summary.turn_done,
+                    approval_requests=output_summary.approval_requests,
+                    approval_responses=output_summary.approval_responses,
+                    user_input_requests=output_summary.user_input_requests,
+                    user_input_responses=output_summary.user_input_responses,
+                    mcp_elicitation_requests=output_summary.mcp_elicitation_requests,
+                    mcp_elicitation_responses=output_summary.mcp_elicitation_responses,
+                    tool_events=output_summary.tool_events,
                 )
             if input_id not in (
                 "agent_cancel",
@@ -2420,149 +2694,27 @@ def run_codex_app_server_events(
                 raise CodexAppServerNodeError(f"Unexpected DORA input id: {input_id!r}")
             continue
         if event_type != "INPUT":
-            raise CodexAppServerNodeError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         if input_id == "agent_turn":
             turn = _decode_agent_turn_event(event)
-            stream_summary = _stream_turn_and_send_outputs(
-                node,
-                transport,
-                control_queue,
-                turn,
-                approval_response_timeout_seconds=approval_response_timeout_seconds,
-                poll_dora_control_during_approval=poll_dora_control_during_approval,
-            )
+            transport.start_turn(turn)
             turn_requests += 1
-            cancel_requests += stream_summary.cancel_requests
-            text_deltas += stream_summary.text_deltas
-            turn_done += stream_summary.turn_done
-            approval_requests += stream_summary.approval_requests
-            approval_responses += stream_summary.approval_responses
-            user_input_requests += stream_summary.user_input_requests
-            user_input_responses += stream_summary.user_input_responses
-            mcp_elicitation_requests += stream_summary.mcp_elicitation_requests
-            mcp_elicitation_responses += stream_summary.mcp_elicitation_responses
-            tool_events += stream_summary.tool_events
         elif input_id == "agent_cancel":
             cancel = _decode_agent_cancel_event(event)
             transport.interrupt_turn(cancel)
             cancel_requests += 1
         elif input_id == "agent_user_input_response":
-            raise CodexAppServerNodeError(
-                "user-input response arrived without a pending user-input request"
-            )
+            response = _decode_agent_user_input_response_event(event)
+            transport.respond_user_input(response)
         elif input_id == "agent_mcp_elicitation_response":
-            raise CodexAppServerNodeError(
-                "MCP elicitation response arrived without a pending MCP elicitation request"
-            )
+            response = _decode_agent_mcp_elicitation_response_event(event)
+            transport.respond_mcp_elicitation(response)
         else:
             raise CodexAppServerNodeError(f"Unexpected DORA input id: {input_id!r}")
 
     raise CodexAppServerNodeError("DORA event stream ended before STOP")
-
-
-def _stream_turn_and_send_outputs(
-    node,
-    transport: CodexAppServerTransport,
-    control_queue: CodexControlQueue,
-    turn: AgentTurnRequest,
-    *,
-    approval_response_timeout_seconds: float,
-    poll_dora_control_during_approval: bool,
-) -> CodexAppServerTurnStreamSummary:
-    text_deltas = 0
-    turn_done = 0
-    approval_requests = 0
-    approval_responses = 0
-    user_input_requests = 0
-    user_input_responses = 0
-    mcp_elicitation_requests = 0
-    mcp_elicitation_responses = 0
-    cancel_requests = 0
-    tool_events = 0
-
-    for app_server_event in transport.stream_turn(turn):
-        if turn_done:
-            raise CodexAppServerNodeError("Codex emitted event after turn_done")
-        if isinstance(app_server_event, ProjectedTextDeltaEvent):
-            _send_agent_text(node, app_server_event.to_contract())
-            text_deltas += 1
-        elif isinstance(app_server_event, ProjectedTurnDoneEvent):
-            _send_agent_done(node, app_server_event.to_contract())
-            turn_done += 1
-        elif isinstance(app_server_event, ProjectedApprovalRequestEvent):
-            control_queue.mark_pending_approval(app_server_event)
-            try:
-                _send_agent_approval(node, app_server_event.to_contract())
-                control_event = _wait_for_approval_control_event(
-                    node,
-                    control_queue,
-                    app_server_event,
-                    timeout_seconds=approval_response_timeout_seconds,
-                    poll_dora_control=poll_dora_control_during_approval,
-                )
-            finally:
-                control_queue.cancel_pending_approval(app_server_event)
-            if isinstance(control_event, AgentApprovalResponse):
-                transport.respond_approval(control_event)
-                approval_responses += 1
-            elif isinstance(control_event, AgentCancelRequest):
-                transport.interrupt_turn(control_event)
-                cancel_requests += 1
-            else:
-                raise CodexAppServerNodeError("unsupported approval control event")
-            approval_requests += 1
-        elif isinstance(app_server_event, ProjectedUserInputRequestEvent):
-            _send_agent_user_input_request(node, app_server_event.to_contract())
-            control_event = _wait_for_user_input_control_event(
-                node,
-                app_server_event,
-                timeout_seconds=approval_response_timeout_seconds,
-            )
-            if isinstance(control_event, AgentUserInputResponse):
-                transport.respond_user_input(control_event)
-                user_input_responses += 1
-            elif isinstance(control_event, AgentCancelRequest):
-                transport.interrupt_turn(control_event)
-                cancel_requests += 1
-            else:
-                raise CodexAppServerNodeError("unsupported user-input control event")
-            user_input_requests += 1
-        elif isinstance(app_server_event, ProjectedMcpElicitationRequestEvent):
-            _send_agent_mcp_elicitation_request(node, app_server_event.to_contract())
-            control_event = _wait_for_mcp_elicitation_control_event(
-                node,
-                app_server_event,
-                timeout_seconds=approval_response_timeout_seconds,
-            )
-            if isinstance(control_event, AgentMcpElicitationResponse):
-                transport.respond_mcp_elicitation(control_event)
-                mcp_elicitation_responses += 1
-            elif isinstance(control_event, AgentCancelRequest):
-                transport.interrupt_turn(control_event)
-                cancel_requests += 1
-            else:
-                raise CodexAppServerNodeError("unsupported MCP elicitation control event")
-            mcp_elicitation_requests += 1
-        elif isinstance(app_server_event, ProjectedToolEvent):
-            _send_agent_tool(node, app_server_event.to_contract())
-            tool_events += 1
-
-    if turn_done != 1:
-        raise CodexAppServerNodeError("Codex turn stream ended without exactly one turn_done")
-    return CodexAppServerTurnStreamSummary(
-        text_deltas=text_deltas,
-        turn_done=turn_done,
-        approval_requests=approval_requests,
-        approval_responses=approval_responses,
-        user_input_requests=user_input_requests,
-        user_input_responses=user_input_responses,
-        mcp_elicitation_requests=mcp_elicitation_requests,
-        mcp_elicitation_responses=mcp_elicitation_responses,
-        cancel_requests=cancel_requests,
-        tool_events=tool_events,
-    )
 
 
 def _project_turn_status(turn: CodexTurnReference) -> ProjectedTurnDoneStatus:
@@ -2738,6 +2890,7 @@ def _project_tool_event(
     seq: int,
 ) -> ProjectedToolEvent:
     event = _project_tool_status(item.status)
+    error_message = _project_tool_error_message(item) if event == "failed" else None
     return ProjectedToolEvent(
         session_id=turn.session_id,
         user_turn_id=turn.user_turn_id,
@@ -2746,6 +2899,7 @@ def _project_tool_event(
         tool_event=event,
         seq=seq,
         summary=item.status,
+        error_message=error_message,
     )
 
 
@@ -2757,6 +2911,16 @@ def _project_tool_status(status: CodexToolCallStatus) -> ProjectedToolEventKind:
     if status == "failed":
         return "failed"
     raise CodexAppServerNodeError(f"unsupported Codex tool status: {status!r}")
+
+
+def _project_tool_error_message(item: CodexToolCallItem) -> str:
+    result = item.result
+    if result is None or result.content is None:
+        return f"Codex tool call failed: {item.tool_name()}"
+    text_parts = tuple(part.text for part in result.content if part.text != "")
+    if not text_parts:
+        return f"Codex tool call failed: {item.tool_name()}"
+    return "\n".join(text_parts)
 
 
 def _jsonrpc_id_to_contract_id(request_id: CodexJsonRpcRequestId) -> str:
@@ -2868,6 +3032,15 @@ def _validate_message_turn(
         raise CodexAppServerNodeError("Codex message turnId did not match active turn")
 
 
+def _is_stale_codex_turn_message(error: CodexAppServerNodeError) -> bool:
+    # ponytail: interrupted Codex turns can still emit late notifications.
+    # Drop only turn/thread mismatches; other Codex errors still fail closed.
+    return str(error) in {
+        "Codex message threadId did not match active thread",
+        "Codex message turnId did not match active turn",
+    }
+
+
 def _decode_agent_turn_event(event) -> AgentTurnRequest:
     metadata = validate_dora_agent_turn_request_metadata(event.get("metadata"))
     return decode_agent_turn_request_from_dora(event.get("value"), metadata)
@@ -2967,126 +3140,6 @@ def _send_http_bytes(
     handler.wfile.write(body)
 
 
-def _wait_for_approval_control_event(
-    node,
-    control_queue: CodexControlQueue,
-    approval: ProjectedApprovalRequestEvent,
-    *,
-    timeout_seconds: float,
-    poll_dora_control: bool,
-) -> AgentApprovalControlEvent:
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0.0:
-            raise CodexAppServerNodeError("timed out waiting for approval response")
-        response = control_queue.wait_for_approval_response(
-            approval,
-            timeout_seconds=min(0.05, remaining),
-        )
-        if response is not None:
-            _validate_approval_response_matches_request(response, approval)
-            return response
-        if not poll_dora_control:
-            continue
-
-        remaining = deadline - time.monotonic()
-        if remaining <= 0.0:
-            raise CodexAppServerNodeError("timed out waiting for approval response")
-        event = _next_dora_event(node, min(0.05, remaining))
-        if event is None:
-            continue
-        event_type = _required_event_text(event, "type")
-        if event_type == "STOP":
-            raise CodexAppServerNodeError("DORA STOP arrived before approval response")
-        if event_type == "INPUT_CLOSED":
-            input_id = _required_event_text(event, "id")
-            if input_id in ("agent_cancel",):
-                raise CodexAppServerNodeError(
-                    f"DORA input {input_id!r} closed before approval was resolved"
-                )
-            continue
-        if event_type != "INPUT":
-            raise CodexAppServerNodeError(f"Unexpected DORA event type: {event_type!r}")
-
-        input_id = _required_event_text(event, "id")
-        if input_id == "agent_cancel":
-            return _decode_agent_cancel_event(event)
-        raise CodexAppServerNodeError(
-            f"Unexpected DORA input id while waiting for approval: {input_id!r}"
-        )
-
-
-def _wait_for_user_input_control_event(
-    node,
-    request: ProjectedUserInputRequestEvent,
-    *,
-    timeout_seconds: float,
-) -> AgentUserInputControlEvent:
-    while True:
-        event = _next_dora_event(node, timeout_seconds)
-        if event is None:
-            raise CodexAppServerNodeError("timed out waiting for user-input response")
-        event_type = _required_event_text(event, "type")
-        if event_type == "STOP":
-            raise CodexAppServerNodeError("DORA STOP arrived before user-input response")
-        if event_type == "INPUT_CLOSED":
-            input_id = _required_event_text(event, "id")
-            if input_id in ("agent_user_input_response", "agent_cancel"):
-                raise CodexAppServerNodeError(
-                    f"DORA input {input_id!r} closed before user-input was resolved"
-                )
-            continue
-        if event_type != "INPUT":
-            raise CodexAppServerNodeError(f"Unexpected DORA event type: {event_type!r}")
-
-        input_id = _required_event_text(event, "id")
-        if input_id == "agent_user_input_response":
-            response = _decode_agent_user_input_response_event(event)
-            _validate_user_input_response_matches_request(response, request)
-            return response
-        if input_id == "agent_cancel":
-            return _decode_agent_cancel_event(event)
-        raise CodexAppServerNodeError(
-            f"Unexpected DORA input id while waiting for user-input: {input_id!r}"
-        )
-
-
-def _wait_for_mcp_elicitation_control_event(
-    node,
-    request: ProjectedMcpElicitationRequestEvent,
-    *,
-    timeout_seconds: float,
-) -> AgentMcpElicitationControlEvent:
-    while True:
-        event = _next_dora_event(node, timeout_seconds)
-        if event is None:
-            raise CodexAppServerNodeError("timed out waiting for MCP elicitation response")
-        event_type = _required_event_text(event, "type")
-        if event_type == "STOP":
-            raise CodexAppServerNodeError("DORA STOP arrived before MCP elicitation response")
-        if event_type == "INPUT_CLOSED":
-            input_id = _required_event_text(event, "id")
-            if input_id in ("agent_mcp_elicitation_response", "agent_cancel"):
-                raise CodexAppServerNodeError(
-                    f"DORA input {input_id!r} closed before MCP elicitation was resolved"
-                )
-            continue
-        if event_type != "INPUT":
-            raise CodexAppServerNodeError(f"Unexpected DORA event type: {event_type!r}")
-
-        input_id = _required_event_text(event, "id")
-        if input_id == "agent_mcp_elicitation_response":
-            response = _decode_agent_mcp_elicitation_response_event(event)
-            _validate_mcp_elicitation_response_matches_request(response, request)
-            return response
-        if input_id == "agent_cancel":
-            return _decode_agent_cancel_event(event)
-        raise CodexAppServerNodeError(
-            f"Unexpected DORA input id while waiting for MCP elicitation: {input_id!r}"
-        )
-
-
 def _validate_approval_response_matches_request(
     response: AgentApprovalResponse,
     approval: ProjectedApprovalRequestEvent,
@@ -3097,37 +3150,6 @@ def _validate_approval_response_matches_request(
         raise CodexAppServerNodeError("approval response user_turn_id did not match request")
     if response.approval_id != approval.approval_id:
         raise CodexAppServerNodeError("approval response approval_id did not match request")
-
-
-def _validate_user_input_response_matches_request(
-    response: AgentUserInputResponse,
-    request: ProjectedUserInputRequestEvent,
-) -> None:
-    if response.session_id != request.session_id:
-        raise CodexAppServerNodeError("user-input response session_id did not match request")
-    if response.user_turn_id != request.user_turn_id:
-        raise CodexAppServerNodeError("user-input response user_turn_id did not match request")
-    if response.request_id != request.request_id:
-        raise CodexAppServerNodeError("user-input response request_id did not match request")
-
-
-def _validate_mcp_elicitation_response_matches_request(
-    response: AgentMcpElicitationResponse,
-    request: ProjectedMcpElicitationRequestEvent,
-) -> None:
-    if response.session_id != request.session_id:
-        raise CodexAppServerNodeError("MCP elicitation response session_id did not match request")
-    if response.user_turn_id != request.user_turn_id:
-        raise CodexAppServerNodeError("MCP elicitation response user_turn_id did not match request")
-    if response.request_id != request.request_id:
-        raise CodexAppServerNodeError("MCP elicitation response request_id did not match request")
-
-
-def _next_dora_event(node, timeout_seconds: float):
-    next_method = getattr(node, "next", None)
-    if callable(next_method):
-        return next_method(timeout_seconds)
-    return next(node)
 
 
 def _send_agent_text(node, event: AgentTextDelta) -> None:

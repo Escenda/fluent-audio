@@ -1,7 +1,7 @@
 nodes:
   - id: agent_turn_replay
     path: python
-    args: ../tests/fixtures/dora/agent_turn_replay.py --dora --session-id live-approval-smoke --user-turn-id user-turn-live-approval --assistant-turn-id assistant-turn-live-approval --text "Use the available shell command tool to run exactly: printf fluent-audio-live-approval-smoke. After the command completes, reply with exactly: fluent-audio-live-approval-smoke"
+    args: ../tests/fixtures/dora/agent_turn_replay.py --dora --session-id live-approval-smoke --user-turn-id user-turn-live-approval --assistant-turn-id assistant-turn-live-approval --text "Use the available shell command tool to run exactly: printf fluent-dialogue-dora-live-approval-smoke. After the command completes, reply with exactly: fluent-dialogue-dora-live-approval-smoke"
     outputs:
       - agent_turn
 
@@ -50,7 +50,7 @@ nodes:
 
   - id: agent_output_probe
     path: python
-    args: ../nodes/dialogue_engine/agent_output_probe.py --dora --session-id live-approval-smoke --user-turn-id user-turn-live-approval --agent-turn-id assistant-turn-live-approval --expected-min-text-deltas 1 --expected-approval-requests 1 --expected-tool-events 0 --expected-done-status completed --expected-text-contains fluent-audio-live-approval-smoke
+    args: ../nodes/dialogue_engine/agent_output_probe.py --dora --session-id live-approval-smoke --user-turn-id user-turn-live-approval --agent-turn-id assistant-turn-live-approval --expected-min-text-deltas 1 --expected-approval-requests 1 --expected-tool-events 0 --expected-done-status completed --expected-text-contains fluent-dialogue-dora-live-approval-smoke
     inputs:
       agent_text:
         source: codex_app_server/agent_text

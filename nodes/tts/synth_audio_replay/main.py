@@ -15,12 +15,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.contracts import AudioFormat, SynthesizedAudioChunk
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioFormat, SynthesizedAudioChunk
+from fluent_dialogue_dora.dora import (
     encode_synthesized_audio_chunk_for_dora,
     encode_synthesized_audio_final_marker_for_dora,
 )
-from fluent_audio.offline import (
+from fluent_dialogue_dora.offline import (
     RawPcmReadConfig,
     capture_time_ns_for_frame_offset,
     iter_raw_pcm_chunks,

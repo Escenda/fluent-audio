@@ -9,5 +9,5 @@ Prefer the PipeWire `node.name` from `wpctl inspect <id>` because DORA graph
 arguments are whitespace-delimited; display names with spaces should not be used
 in generated dataflows.
 
-The node emits fluent-audio `AudioChunk` protobuf payloads on `audio` and an
+The node emits fluent-dialogue-dora `AudioChunk` protobuf payloads on `audio` and an
 explicit audio stream final marker when the bounded capture ends.

@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 use std::str::FromStr;
 
 use dora_node_api::{Metadata, MetadataParameters, Parameter};
-use fluent_audio_contracts::fluent_audio::v1::{
+use fluent_dialogue_dora_contracts::fluent_dialogue_dora::v1::{
     AudioFormat as PbAudioFormat, AudioFrame, AudioStreamFinal,
     ChannelLayout as PbChannelLayout, SampleFormat as PbSampleFormat,
 };
@@ -11,13 +11,13 @@ use thiserror::Error;
 
 pub const AUDIO_INPUT_ID: &str = "audio";
 pub const AUDIO_OUTPUT_ID: &str = "audio";
-pub const PROTOBUF_CODEC_KEY: &str = "fluent_audio_codec";
-pub const PROTOBUF_SCHEMA_VERSION_KEY: &str = "fluent_audio_schema_version";
-pub const PROTOBUF_MESSAGE_TYPE_KEY: &str = "fluent_audio_message_type";
+pub const PROTOBUF_CODEC_KEY: &str = "fluent_dialogue_dora_codec";
+pub const PROTOBUF_SCHEMA_VERSION_KEY: &str = "fluent_dialogue_dora_schema_version";
+pub const PROTOBUF_MESSAGE_TYPE_KEY: &str = "fluent_dialogue_dora_message_type";
 pub const PROTOBUF_CODEC: &str = "protobuf";
-pub const PROTOBUF_SCHEMA_VERSION: &str = "fluent_audio.v1";
-pub const AUDIO_FRAME_MESSAGE_TYPE: &str = "fluent_audio.v1.AudioFrame";
-pub const AUDIO_STREAM_FINAL_MESSAGE_TYPE: &str = "fluent_audio.v1.AudioStreamFinal";
+pub const PROTOBUF_SCHEMA_VERSION: &str = "fluent_dialogue_dora.v1";
+pub const AUDIO_FRAME_MESSAGE_TYPE: &str = "fluent_dialogue_dora.v1.AudioFrame";
+pub const AUDIO_STREAM_FINAL_MESSAGE_TYPE: &str = "fluent_dialogue_dora.v1.AudioStreamFinal";
 
 #[derive(Debug, Error)]
 pub enum AudioBoundaryError {
@@ -25,7 +25,7 @@ pub enum AudioBoundaryError {
     NonPositive { field: &'static str, value: u64 },
     #[error("{field} is too large for DORA integer metadata: {value}")]
     IntegerOverflow { field: &'static str, value: u64 },
-    #[error("unsupported sample format {0:?}; supported sample format is s16le")]
+    #[error("unsupported sample format {0:?}; supported sample formats are s16le and f32le")]
     UnsupportedSampleFormat(String),
     #[error("unsupported channel layout {0:?}; supported channel layout is interleaved")]
     UnsupportedChannelLayout(String),
@@ -90,30 +90,35 @@ pub enum AudioBoundaryError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SampleFormat {
     S16Le,
+    F32Le,
 }
 
 impl SampleFormat {
     pub fn as_str(self) -> &'static str {
         match self {
             SampleFormat::S16Le => "s16le",
+            SampleFormat::F32Le => "f32le",
         }
     }
 
     pub fn bytes_per_sample(self) -> usize {
         match self {
             SampleFormat::S16Le => 2,
+            SampleFormat::F32Le => 4,
         }
     }
 
     pub fn to_proto(self) -> i32 {
         match self {
             SampleFormat::S16Le => PbSampleFormat::S16le as i32,
+            SampleFormat::F32Le => PbSampleFormat::F32le as i32,
         }
     }
 
     pub fn from_proto(value: i32) -> Result<Self, AudioBoundaryError> {
         match PbSampleFormat::try_from(value) {
             Ok(PbSampleFormat::S16le) => Ok(SampleFormat::S16Le),
+            Ok(PbSampleFormat::F32le) => Ok(SampleFormat::F32Le),
             Ok(_) | Err(_) => Err(AudioBoundaryError::UnsupportedProtobufSampleFormat(value)),
         }
     }
@@ -125,6 +130,7 @@ impl FromStr for SampleFormat {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "s16le" => Ok(SampleFormat::S16Le),
+            "f32le" => Ok(SampleFormat::F32Le),
             other => Err(AudioBoundaryError::UnsupportedSampleFormat(
                 other.to_owned(),
             )),
@@ -563,6 +569,14 @@ pub fn capture_time_ns_for_frame_offset(
 
 pub fn i16_samples_to_s16le_bytes(samples: &[i16]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(samples.len() * 2);
+    for sample in samples {
+        bytes.extend_from_slice(&sample.to_le_bytes());
+    }
+    bytes
+}
+
+pub fn f32_samples_to_f32le_bytes(samples: &[f32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(samples.len() * 4);
     for sample in samples {
         bytes.extend_from_slice(&sample.to_le_bytes());
     }

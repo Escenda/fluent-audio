@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice + Vision Operations Console Mock</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111214;
+      --panel: #18191b;
+      --panel-2: #202123;
+      --panel-3: #262729;
+      --line: #303236;
+      --text: #ece9e1;
+      --muted: #aaa49a;
+      --soft: #79736b;
+      --green: #2bd272;
+      --red: #ff5a5f;
+      --orange: #f6a23a;
+      --gray: #777b82;
+      --blue: #69a7ff;
+      --field: #6f8b65;
+      --soil: #71573e;
+      --warn-bg: #32271a;
+      --ok-bg: #173126;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+      overflow: hidden;
+    }
+
+    button,
+    select,
+    input {
+      font: inherit;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 264px minmax(380px, 540px) minmax(620px, 1fr);
+      height: 100vh;
+      min-width: 1180px;
+    }
+
+    .rail,
+    .dialogue,
+    .ops {
+      min-height: 0;
+      border-right: 1px solid var(--line);
+    }
+
+    .rail {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: #141517;
+    }
+
+    .topbar {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+      flex: 0 0 auto;
+      background: var(--gray);
+    }
+
+    .dot.red { background: var(--red); }
+    .dot.orange { background: var(--orange); }
+    .dot.green { background: var(--green); }
+    .dot.gray { background: var(--gray); }
+    .dot.blue { background: var(--blue); }
+
+    .window-dots {
+      display: flex;
+      gap: 7px;
+      margin-right: 8px;
+    }
+
+    .window-dots .dot {
+      width: 11px;
+      height: 11px;
+    }
+
+    .rail-main,
+    .dialogue-scroll,
+    .ops-main {
+      min-height: 0;
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+
+    .rail-main {
+      padding: 12px 10px;
+    }
+
+    .rail-action,
+    .session-item,
+    .small-button,
+    .pill-button {
+      border: 0;
+      color: var(--text);
+      background: transparent;
+      border-radius: 6px;
+    }
+
+    .rail-action {
+      width: 100%;
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 8px;
+      color: var(--muted);
+      text-align: left;
+    }
+
+    .rail-action:hover,
+    .session-item:hover,
+    .small-button:hover,
+    .pill-button:hover {
+      background: var(--panel-2);
+    }
+
+    .section-label {
+      margin: 18px 8px 8px;
+      color: var(--soft);
+      font-size: 12px;
+    }
+
+    .session-item {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 8px;
+      text-align: left;
+    }
+
+    .session-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .session-meta {
+      color: var(--soft);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .rail-bottom {
+      padding: 10px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+    }
+
+    .profile-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+    }
+
+    select {
+      min-width: 0;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 8px;
+      color: var(--text);
+      background: var(--panel);
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .small-button,
+    .pill-button {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .dialogue {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: #151618;
+    }
+
+    .dialogue-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .dialogue-scroll {
+      padding: 22px 26px 18px;
+    }
+
+    .message {
+      margin: 0 0 18px;
+      line-height: 1.75;
+    }
+
+    .message .role {
+      margin-bottom: 6px;
+      color: var(--soft);
+      font-size: 12px;
+    }
+
+    .bubble {
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      background: var(--panel-2);
+    }
+
+    .bubble.user {
+      background: #242322;
+    }
+
+    .live-strip {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 38px;
+      padding: 0 12px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      background: #171819;
+    }
+
+    .meter {
+      height: 7px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #2c2d30;
+    }
+
+    .meter span {
+      display: block;
+      width: 42%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), var(--orange));
+    }
+
+    .ops {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      border-right: 0;
+      background: #111214;
+    }
+
+    .ops-main {
+      padding: 14px;
+      display: grid;
+      grid-template-rows: minmax(170px, 0.95fr) minmax(170px, 0.9fr) minmax(270px, 1.45fr);
+      gap: 12px;
+    }
+
+    .ops-row {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(260px, 0.95fr) minmax(300px, 1fr);
+      gap: 12px;
+    }
+
+    .panel {
+      min-height: 0;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .panel-body {
+      min-height: 0;
+      height: calc(100% - 39px);
+      overflow: auto;
+      scrollbar-gutter: stable;
+      padding: 12px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(52px, 1fr));
+      align-items: start;
+      gap: 8px;
+      min-width: 480px;
+    }
+
+    .flow-step {
+      position: relative;
+      min-width: 0;
+      display: grid;
+      gap: 7px;
+      justify-items: center;
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .flow-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 7px;
+      left: calc(50% + 13px);
+      width: calc(100% - 18px);
+      height: 2px;
+      background: var(--line);
+    }
+
+    .flow-step.done:not(:last-child)::after {
+      background: var(--green);
+    }
+
+    .flow-name {
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+      gap: 8px;
+    }
+
+    .health-item {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+    }
+
+    .health-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .memory-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .memory-item {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: var(--panel-2);
+    }
+
+    .memory-item.important {
+      border-color: #6d5631;
+      background: var(--warn-bg);
+    }
+
+    .memory-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+      font-weight: 650;
+    }
+
+    .memory-text {
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .camera-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(170px, 1fr));
+      gap: 10px;
+    }
+
+    .camera-card {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+
+    .camera-view {
+      aspect-ratio: 16 / 9;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(10deg, transparent 0 44%, rgba(255,255,255,0.12) 45% 46%, transparent 47%),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.09) 0 2px, transparent 2px 42px),
+        linear-gradient(180deg, #4a6f78 0 30%, var(--field) 31% 68%, var(--soil) 69% 100%);
+    }
+
+    .camera-view::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.35));
+    }
+
+    .event-band {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      z-index: 1;
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .event-band span {
+      display: block;
+      height: 100%;
+      background: var(--orange);
+    }
+
+    .camera-meta {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 10px;
+    }
+
+    .camera-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 650;
+    }
+
+    .camera-score {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    @media (max-width: 1280px) {
+      .shell {
+        grid-template-columns: 230px 440px minmax(560px, 1fr);
+      }
+
+      .camera-grid {
+        grid-template-columns: repeat(2, minmax(170px, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <aside class="rail">
+      <div class="topbar">
+        <span class="window-dots" aria-hidden="true">
+          <span class="dot red"></span>
+          <span class="dot orange"></span>
+          <span class="dot green"></span>
+        </span>
+        <span>Physical AI Console</span>
+      </div>
+
+      <div class="rail-main">
+        <button class="rail-action" type="button">+ 新しいチャット</button>
+        <button class="rail-action" type="button">検索</button>
+        <button class="rail-action" type="button">録画イベント</button>
+
+        <div class="section-label">ピン留め</div>
+        <button class="session-item" type="button">
+          <span class="session-title">環境変動を検知</span>
+          <span class="session-meta">13時間</span>
+        </button>
+
+        <div class="section-label">対話セッション</div>
+        <button class="session-item" type="button">
+          <span class="session-title">圃場Aの巡回計画</span>
+          <span class="session-meta"><span class="dot green"></span></span>
+        </button>
+        <button class="session-item" type="button">
+          <span class="session-title">収穫エリア確認</span>
+          <span class="session-meta">18時間</span>
+        </button>
+        <button class="session-item" type="button">
+          <span class="session-title">ホーム復帰の動作確認</span>
+          <span class="session-meta">1日</span>
+        </button>
+        <button class="session-item" type="button">
+          <span class="session-title">VLMイベント説明の検証</span>
+          <span class="session-meta">3日</span>
+        </button>
+        <button class="session-item" type="button">
+          <span class="session-title">region/route/home設定</span>
+          <span class="session-meta">6日</span>
+        </button>
+      </div>
+
+      <div class="rail-bottom">
+        <div class="profile-row">
+          <select aria-label="圃場プロファイル">
+            <option>圃場A profile</option>
+            <option>圃場B profile</option>
+            <option>検証 profile</option>
+          </select>
+          <button class="small-button" type="button">設定</button>
+        </div>
+        <div class="button-grid">
+          <button class="small-button" type="button">region</button>
+          <button class="small-button" type="button">route</button>
+          <button class="small-button" type="button">home</button>
+        </div>
+      </div>
+    </aside>
+
+    <section class="dialogue">
+      <div class="topbar">
+        <span class="dialogue-title">live-hardware-session</span>
+        <span class="tag"><span class="dot green"></span> connected</span>
+      </div>
+
+      <div class="dialogue-scroll">
+        <article class="message">
+          <div class="role">ユーザー</div>
+          <div class="bubble user">ヘイ、アスパ。圃場Aの北側を確認して、異常があれば教えて。</div>
+        </article>
+        <article class="message">
+          <div class="role">エージェント</div>
+          <div class="bubble">圃場Aの北側カメラを確認します。移動はまだ開始せず、まず現在の映像と最近のイベントを確認します。</div>
+        </article>
+        <article class="message">
+          <div class="role">システム</div>
+          <div class="bubble">北側カメラで環境変動イベントを検出しました。VLM説明を生成中です。</div>
+        </article>
+        <article class="message">
+          <div class="role">エージェント</div>
+          <div class="bubble">北側通路の奥で人影に近い動きがあります。作業者の可能性があるため、移動命令の前に確認を求めます。</div>
+        </article>
+      </div>
+
+      <div class="live-strip">
+        <span class="tag"><span class="dot blue"></span> ASR listening</span>
+        <div class="meter" aria-label="音声入力レベル"><span></span></div>
+        <span>VAD 0.42</span>
+      </div>
+    </section>
+
+    <section class="ops">
+      <div class="topbar">
+        <span class="dialogue-title">Operations / Vision</span>
+        <span class="tag"><span class="dot orange"></span> event candidate</span>
+      </div>
+
+      <div class="ops-main">
+        <div class="ops-row">
+          <section class="panel">
+            <div class="panel-head">
+              <span>会話フロー</span>
+              <span>turn 24</span>
+            </div>
+            <div class="panel-body">
+              <div class="flow">
+                <div class="flow-step done">
+                  <span class="dot green"></span>
+                  <span class="flow-name">Mic</span>
+                </div>
+                <div class="flow-step done">
+                  <span class="dot green"></span>
+                  <span class="flow-name">AEC</span>
+                </div>
+                <div class="flow-step done">
+                  <span class="dot green"></span>
+                  <span class="flow-name">VAD</span>
+                </div>
+                <div class="flow-step done">
+                  <span class="dot green"></span>
+                  <span class="flow-name">ASR</span>
+                </div>
+                <div class="flow-step">
+                  <span class="dot orange"></span>
+                  <span class="flow-name">Agent</span>
+                </div>
+                <div class="flow-step">
+                  <span class="dot gray"></span>
+                  <span class="flow-name">TTS</span>
+                </div>
+                <div class="flow-step">
+                  <span class="dot gray"></span>
+                  <span class="flow-name">Speaker</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <span>バックエンドヘルス</span>
+              <span>12 nodes</span>
+            </div>
+            <div class="panel-body">
+              <div class="health-grid">
+                <div class="health-item"><span class="dot green"></span><span class="health-name">dora_web_bridge</span></div>
+                <div class="health-item"><span class="dot green"></span><span class="health-name">cpal_capture</span></div>
+                <div class="health-item"><span class="dot green"></span><span class="health-name">barge_in_aec</span></div>
+                <div class="health-item"><span class="dot orange"></span><span class="health-name">nemotron_asr</span></div>
+                <div class="health-item"><span class="dot green"></span><span class="health-name">dialogue_engine</span></div>
+                <div class="health-item"><span class="dot gray"></span><span class="health-name">ros2_bridge</span></div>
+                <div class="health-item"><span class="dot green"></span><span class="health-name">vlabor_recorder</span></div>
+                <div class="health-item"><span class="dot red"></span><span class="health-name">camera_east</span></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <span>記憶 / 重要イベント</span>
+            <span>agent-reviewed</span>
+          </div>
+          <div class="panel-body">
+            <div class="memory-list">
+              <div class="memory-item important">
+                <div class="memory-title">
+                  <span>北側通路に人影</span>
+                  <span class="tag"><span class="dot orange"></span> pinned</span>
+                </div>
+                <div class="memory-text">北側カメラで人に近い移動を検出。移動指示の前に安全確認が必要。</div>
+              </div>
+              <div class="memory-item">
+                <div class="memory-title">
+                  <span>西側ハウス入口が開放</span>
+                  <span class="tag"><span class="dot green"></span> memory</span>
+                </div>
+                <div class="memory-text">前回巡回時と比べて入口の状態が変化。作業中の可能性あり。</div>
+              </div>
+              <div class="memory-item">
+                <div class="memory-title">
+                  <span>南側カメラの視界不良</span>
+                  <span class="tag"><span class="dot gray"></span> note</span>
+                </div>
+                <div class="memory-text">水滴または汚れで一部が不鮮明。検出確率は低下気味。</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <span>VLAbor カメラ</span>
+            <span>environment-change stream</span>
+          </div>
+          <div class="panel-body">
+            <div class="camera-grid">
+              <article class="camera-card">
+                <div class="camera-view"><div class="event-band"><span style="width: 84%"></span></div></div>
+                <div class="camera-meta">
+                  <span class="camera-name">north_lane</span>
+                  <span class="camera-score">p=0.84</span>
+                </div>
+              </article>
+              <article class="camera-card">
+                <div class="camera-view"><div class="event-band"><span style="width: 36%"></span></div></div>
+                <div class="camera-meta">
+                  <span class="camera-name">west_gate</span>
+                  <span class="camera-score">p=0.36</span>
+                </div>
+              </article>
+              <article class="camera-card">
+                <div class="camera-view"><div class="event-band"><span style="width: 12%"></span></div></div>
+                <div class="camera-meta">
+                  <span class="camera-name">south_house</span>
+                  <span class="camera-score">p=0.12</span>
+                </div>
+              </article>
+              <article class="camera-card">
+                <div class="camera-view"><div class="event-band"><span style="width: 63%"></span></div></div>
+                <div class="camera-meta">
+                  <span class="camera-name">harvest_area_01</span>
+                  <span class="camera-score">p=0.63</span>
+                </div>
+              </article>
+              <article class="camera-card">
+                <div class="camera-view"><div class="event-band"><span style="width: 18%"></span></div></div>
+                <div class="camera-meta">
+                  <span class="camera-name">home_dock</span>
+                  <span class="camera-score">p=0.18</span>
+                </div>
+              </article>
+              <article class="camera-card">
+                <div class="camera-view"><div class="event-band"><span style="width: 0%"></span></div></div>
+                <div class="camera-meta">
+                  <span class="camera-name">east_camera</span>
+                  <span class="camera-score">offline</span>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

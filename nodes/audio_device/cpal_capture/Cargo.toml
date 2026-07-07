@@ -1,5 +1,5 @@
 [package]
-name = "fluent-audio-cpal-capture"
+name = "fluent-dialogue-dora-cpal-capture"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -13,6 +13,6 @@ clap = { version = "4.5", features = ["derive"] }
 cpal = "0.18.1"
 dora-node-api = "0.5.0"
 eyre = "0.6"
-fluent-audio-io-boundary = { path = "../rust_audio_boundary" }
+fluent-dialogue-dora-io-boundary = { path = "../rust_audio_boundary" }
 prost = "0.14"
 thiserror = "2.0"

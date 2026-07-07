@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraMetadataMapping,
     decode_agent_approval_request_from_dora,
     decode_agent_text_delta_from_dora,
@@ -308,7 +308,7 @@ class JsonlRos2BridgeProjectionPublisher:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the fluent-audio ROS2 projection bridge.")
+    parser = argparse.ArgumentParser(description="Run the fluent-dialogue-dora ROS2 projection bridge.")
     parser.add_argument("--dora", action="store_true")
     parser.add_argument("--jsonl-output", required=True, type=Path)
     parser.add_argument(

@@ -1,7 +1,7 @@
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     PlaybackClear,
     PlaybackDone,
     PlaybackPause,
@@ -9,7 +9,7 @@ from fluent_audio.contracts import (
     PlaybackState,
     PlaybackStop,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraPlaybackMetadataError,
     decode_playback_command_from_dora,
     decode_playback_done_from_dora,

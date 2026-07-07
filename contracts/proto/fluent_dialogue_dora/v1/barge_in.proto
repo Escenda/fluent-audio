@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package fluent_dialogue_dora.v1;
+
+// Emitted by the barge_in_detector when sustained user speech is detected while
+// the agent is actively playing back synthesized speech. It is a pure signal:
+// the dialogue engine decides how to act on it (stop playback, cancel the turn,
+// truncate context).
+message BargeInEvent {
+  string session_id = 1;
+  string source_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+  // The playback request the user interrupted, learned from PlaybackState.
+  string playback_request_id = 5;
+  string playback_stream_id = 6;
+  // Frames the interrupted request had played at detection time (PlaybackState).
+  uint64 played_frames = 7;
+  // VAD sample index (16 kHz timeline) at which the barge-in fired.
+  uint64 detected_sample_index = 8;
+  double speech_probability = 9;
+}
+
+message BargeInStreamFinal {
+  string session_id = 1;
+  string source_id = 2;
+  string stream_id = 3;
+  uint64 seq = 4;
+}

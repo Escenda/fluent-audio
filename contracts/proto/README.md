@@ -1,6 +1,6 @@
 # Proto Schemas
 
-The canonical proto files live under `fluent_audio/v1`.
+The canonical proto files live under `fluent_dialogue_dora/v1`.
 
 Generate Python bindings with:
 

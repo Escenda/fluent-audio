@@ -3,8 +3,8 @@ import wave
 
 import pytest
 
-from fluent_audio.dora import validate_dora_audio_final_marker
-from fluent_audio.offline import (
+from fluent_dialogue_dora.dora import validate_dora_audio_final_marker
+from fluent_dialogue_dora.offline import (
     WavPcmEmptyInputError,
     WavPcmReadConfig,
     WavPcmUnsupportedFormatError,

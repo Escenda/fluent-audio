@@ -22,7 +22,7 @@ nodes:
 
   - id: agent_output_probe
     path: python
-    args: ../nodes/dialogue_engine/agent_output_probe.py --dora --session-id fixture-turn-smoke --user-turn-id user-turn-fixture-smoke --agent-turn-id assistant-turn-fixture-smoke --expected-min-text-deltas 1 --expected-approval-requests 0 --expected-tool-events 0 --expected-done-status completed --expected-text-contains fluent-audio-fixture-smoke
+    args: ../nodes/dialogue_engine/agent_output_probe.py --dora --session-id fixture-turn-smoke --user-turn-id user-turn-fixture-smoke --agent-turn-id assistant-turn-fixture-smoke --expected-min-text-deltas 1 --expected-approval-requests 0 --expected-tool-events 0 --expected-done-status completed --expected-text-contains fluent-dialogue-dora-fixture-smoke
     inputs:
       agent_text:
         source: codex_app_server/agent_text

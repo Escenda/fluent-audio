@@ -1,7 +1,7 @@
 import pytest
 
-from fluent_audio.contracts import TtsTextChunk, TtsTextStreamFinal
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TtsTextChunk, TtsTextStreamFinal
+from fluent_dialogue_dora.dora import (
     encode_tts_text_chunk_for_dora,
     encode_tts_text_stream_final_marker_for_dora,
 )

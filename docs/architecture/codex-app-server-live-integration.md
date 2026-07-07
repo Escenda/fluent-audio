@@ -93,10 +93,10 @@ Guarded live checks:
 
 ```bash
 scripts/run_codex_app_server_live_smoke.sh --write-live-turn-dataflow
-FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-turn
+FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-turn
 
 scripts/run_codex_app_server_live_smoke.sh --write-live-approval-dataflow
-FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-approval
+FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1 scripts/run_codex_app_server_live_smoke.sh --live-approval
 ```
 
 Do not treat the guarded live checks as complete unless a local model provider
@@ -104,8 +104,9 @@ is running and the command output confirms the Codex turn completed.
 
 ## Local vLLM Notes
 
-For the larger Qwen3-Coder 30B NVFP4 local server, use
-`scripts/run_qwen3_coder_vllm_server.sh`. The script keeps a 128k context and
+For the larger Qwen3.6 27B MTP pi-tune NVFP4 local server, use
+`scripts/run_qwen3_coder_vllm_server.sh`. The script keeps a 128k context,
+uses the Qwen3 reasoning/tool parsers, disables multimodal inputs, and
 limits KV reservation with `--max-num-seqs 1`,
 `--max-num-batched-tokens 131072`, `--kv-cache-memory-bytes 7G`, and
 `--gpu-memory-utilization 0.18`.

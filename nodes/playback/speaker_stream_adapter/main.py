@@ -22,8 +22,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.contracts import AudioChunk, AudioFormat
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioChunk, AudioFormat
+from fluent_dialogue_dora.dora import (
     DoraAudioMetadata,
     decode_audio_chunk_from_dora,
     encode_audio_chunk_for_dora,
@@ -234,7 +234,7 @@ def run_speaker_stream_adapter_events(
                 final_sample_index=state.output_next_sample_index,
             )
         if event_type != "INPUT":
-            raise SpeakerStreamAdapterError(f"Unexpected DORA event type: {event_type!r}")
+            continue
 
         input_id = _required_event_text(event, "id")
         if input_id != "audio":

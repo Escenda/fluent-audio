@@ -1,4 +1,4 @@
-"""Decode configured fluent-audio DORA inputs into Web bridge events."""
+"""Decode configured fluent-dialogue-dora DORA inputs into Web bridge events."""
 # ruff: noqa: E402
 
 from __future__ import annotations
@@ -13,8 +13,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraAsrControlFinalMarkerError,
+    DoraBargeInFinalMarkerError,
     decode_agent_approval_request_from_dora,
     decode_agent_mcp_elicitation_request_from_dora,
     decode_agent_text_delta_from_dora,
@@ -23,6 +24,7 @@ from fluent_audio.dora import (
     decode_agent_user_input_request_from_dora,
     decode_asr_control_from_dora,
     decode_audio_level_event_from_dora,
+    decode_barge_in_event_from_dora,
     decode_dialogue_event_from_dora,
     decode_playback_done_from_dora,
     decode_playback_state_from_dora,
@@ -42,6 +44,8 @@ from fluent_audio.dora import (
     validate_dora_asr_control_final_marker,
     validate_dora_asr_control_metadata,
     validate_dora_audio_level_metadata,
+    validate_dora_barge_in_final_marker,
+    validate_dora_barge_in_metadata,
     validate_dora_dialogue_event_metadata,
     validate_dora_playback_done_metadata,
     validate_dora_playback_state_metadata,
@@ -66,6 +70,7 @@ from bridges.dora_web_bridge.projection import (
     agent_user_input_request_to_web,
     asr_control_to_web,
     audio_level_to_web,
+    barge_in_event_to_web,
     dialogue_event_to_web,
     playback_done_to_web,
     playback_state_to_web,
@@ -215,6 +220,14 @@ def decode_dora_input_for_web_bridge(
             decode_tts_text_chunk_from_dora(payload, tts_metadata),
             created_at_ns=created_at_ns,
         )
+    if input_id == "barge_in":
+        barge_in_metadata = validate_dora_barge_in_metadata(metadata)
+        try:
+            event = decode_barge_in_event_from_dora(payload, barge_in_metadata)
+        except DoraBargeInFinalMarkerError:
+            validate_dora_barge_in_final_marker(payload, barge_in_metadata)
+            return None
+        return barge_in_event_to_web(event, created_at_ns=created_at_ns)
     if input_id == "playback_state":
         playback_metadata = validate_dora_playback_state_metadata(metadata)
         return playback_state_to_web(

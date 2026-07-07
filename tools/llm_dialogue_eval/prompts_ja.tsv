@@ -1,0 +1,23 @@
+# LLM日本語対話品質 評価プロンプト v1
+# 形式: id<TAB>category<TAB>text
+# category:
+#   greeting/smalltalk/knowledge/emotion = 一般対話品質
+#   clarify     = 曖昧入力(確認質問が返るのが理想)
+#   capability  = 能力質問(developer instructionsで機能一覧の読み上げ禁止)
+#   instruction = 指示遵守(音声向け制約とぶつかる依頼を含む)
+#   asr_error   = ASR誤認識を模した入力(頑健性 = H1感度の観察)
+d-001	greeting	こんにちは。今日は朝から少し疲れています。
+d-002	smalltalk	週末は天気が良ければ散歩に行こうと思っています。おすすめの過ごし方はありますか。
+d-003	knowledge	味噌汁と豚汁の違いを簡単に教えてください。
+d-004	knowledge	七夕はいつの行事か教えてください。
+d-005	emotion	仕事でミスをしてしまって、少し落ち込んでいます。
+d-006	clarify	あれ、いい感じにしておいてもらえますか。
+d-007	clarify	えっと、その、なんだっけ、あの件はどうなりましたか。
+d-008	capability	あなたは何ができますか。
+d-009	instruction	会議の準備として何をすべきか、三つ挙げてください。
+d-010	instruction	今から十分間だけ集中したいので、静かにしていてください。
+d-011	asr_error	今日の点気はどうですか。
+d-012	asr_error	音学を止めてください。
+d-013	asr_error	会議の四両をまとめておいてください。
+d-014	knowledge	一年は何日あるか教えてください。
+d-015	smalltalk	最近、夜になっても暑くて眠れません。何か工夫はありますか。

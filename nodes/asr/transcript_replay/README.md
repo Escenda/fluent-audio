@@ -9,4 +9,4 @@ agent/TTS/playback boundaries can be smoke-tested without running ASR.
 Output:
 
 - `transcript`: final transcript and stream-final marker encoded with
-  `fluent_audio.dora.transcript`.
+  `fluent_dialogue_dora.dora.transcript`.

@@ -54,10 +54,10 @@ uv run --extra dev --extra dora python -m pytest \
   tests/contracts/test_dora_synthesis.py \
   tests/nodes/dialogue_engine/test_dialogue_engine_node.py
 uv run --extra dev --extra dora python -m ruff check \
-  src/fluent_audio/contracts/dialogue.py \
-  src/fluent_audio/dora/dialogue.py \
-  src/fluent_audio/contracts/synthesis.py \
-  src/fluent_audio/dora/synthesis.py \
+  src/fluent_dialogue_dora/contracts/dialogue.py \
+  src/fluent_dialogue_dora/dora/dialogue.py \
+  src/fluent_dialogue_dora/contracts/synthesis.py \
+  src/fluent_dialogue_dora/dora/synthesis.py \
   nodes/dialogue_engine \
   tests/nodes/dialogue_engine/test_dialogue_engine_node.py
 scripts/run_dialogue_to_cpal_smoke.sh

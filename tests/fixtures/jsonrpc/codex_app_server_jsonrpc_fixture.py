@@ -103,7 +103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     thread_id=request.params.thread_id,
                     turn_id=args.turn_id,
                     item_id="permissions-fixture-1",
-                    cwd="/tmp/fluent-audio-permissions-fixture",
+                    cwd="/tmp/fluent-dialogue-dora-permissions-fixture",
                     permissions=_build_permission_profile(
                         write_paths=tuple(args.permission_write or ()),
                         network_enabled=args.permission_network,
@@ -164,8 +164,8 @@ def _write_initialize_response(request_id: str) -> None:
     response = CodexInitializeJsonRpcResponse(
         id=request_id,
         result=CodexInitializeResult(
-            user_agent="fluent-audio-fixture/0.0.0",
-            codex_home="/tmp/fluent-audio-fixture-codex-home",
+            user_agent="fluent-dialogue-dora-fixture/0.0.0",
+            codex_home="/tmp/fluent-dialogue-dora-fixture-codex-home",
             platform_family="unix",
             platform_os="linux",
         ),

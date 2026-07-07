@@ -6,7 +6,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AgentApprovalRequest,
     AgentMcpElicitationRequest,
     AgentTextDelta,
@@ -15,6 +15,7 @@ from fluent_audio.contracts import (
     AgentUserInputRequest,
     AsrControl,
     AudioLevelEvent,
+    BargeInEvent,
     DialogueEvent,
     PlaybackDone,
     PlaybackState,
@@ -31,7 +32,7 @@ NonEmptyString = Annotated[str, StringConstraints(min_length=1)]
 
 
 class WebBridgeProjectionError(ValueError):
-    """Raised when a Web projection cannot preserve a fluent-audio contract."""
+    """Raised when a Web projection cannot preserve a fluent-dialogue-dora contract."""
 
 
 class WebSessionStateEvent(BaseModel):
@@ -358,6 +359,22 @@ class WebPlaybackStateEvent(BaseModel):
         return self
 
 
+class WebBargeInEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    event_type: Literal["barge_in"] = "barge_in"
+    session_id: NonEmptyString
+    source_id: NonEmptyString
+    stream_id: NonEmptyString
+    seq: int = Field(ge=0)
+    created_at_ns: int = Field(ge=0)
+    playback_request_id: NonEmptyString
+    playback_stream_id: NonEmptyString
+    played_frames: int = Field(ge=0)
+    detected_sample_index: int = Field(ge=0)
+    speech_probability: float = Field(ge=0.0, le=1.0)
+
+
 class WebPlaybackDoneEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -401,6 +418,7 @@ WebBridgeProjection: TypeAlias = Annotated[
     | WebAgentMcpElicitationRequestEvent
     | WebToolEvent
     | WebPlaybackStateEvent
+    | WebBargeInEvent
     | WebPlaybackDoneEvent,
     Field(discriminator="event_type"),
 ]
@@ -709,6 +727,25 @@ def playback_state_to_web(
         created_at_ns=created_at_ns,
         played_frames=event.played_frames,
         reason=event.reason,
+    )
+
+
+def barge_in_event_to_web(
+    event: BargeInEvent,
+    *,
+    created_at_ns: int,
+) -> WebBargeInEvent:
+    return WebBargeInEvent(
+        session_id=event.session_id,
+        source_id=event.source_id,
+        stream_id=event.stream_id,
+        seq=event.seq,
+        created_at_ns=created_at_ns,
+        playback_request_id=event.playback_request_id,
+        playback_stream_id=event.playback_stream_id,
+        played_frames=event.played_frames,
+        detected_sample_index=event.detected_sample_index,
+        speech_probability=event.speech_probability,
     )
 
 

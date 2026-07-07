@@ -11,5 +11,5 @@ permissions-approval-fixture-1
 --approval-reason
 Need additional workspace access
 --permission-write
-/tmp/fluent-audio-permissions-fixture
+/tmp/fluent-dialogue-dora-permissions-fixture
 --permission-network

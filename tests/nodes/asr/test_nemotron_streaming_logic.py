@@ -1,6 +1,6 @@
 import pytest
 
-from fluent_audio.contracts import AsrCancel, AsrStart, AsrStop, AudioChunk, AudioFormat
+from fluent_dialogue_dora.contracts import AsrCancel, AsrStart, AsrStop, AudioChunk, AudioFormat
 from nodes.asr.nemotron_streaming.logic import (
     AsrBackendFinalResult,
     AsrBackendPushResult,

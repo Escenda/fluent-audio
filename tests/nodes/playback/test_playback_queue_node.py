@@ -1,6 +1,6 @@
 import pytest
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AudioChunk,
     AudioFormat,
     PlaybackClear,
@@ -11,7 +11,7 @@ from fluent_audio.contracts import (
     PlaybackStop,
     SynthesizedAudioChunk,
 )
-from fluent_audio.dora import (
+from fluent_dialogue_dora.dora import (
     DoraAudioFinalMarker,
     decode_audio_chunk_from_dora,
     decode_playback_done_from_dora,
@@ -299,6 +299,42 @@ def test_playback_queue_stop_and_clear_terminate_active_request(
     assert playback_done[0].status == expected_status
     assert playback_done[0].final_sequence == 1
     assert playback_done[0].total_frames == 2
+
+
+def test_playback_queue_discards_remaining_synth_audio_after_stop_until_final() -> None:
+    fake_node = FakeDoraNode(
+        [
+            _synth_event(0, request_id="tts-1", assistant_turn_id="assistant-turn-1"),
+            _stop_event(seq=0),
+            _synth_event(1, request_id="tts-1", assistant_turn_id="assistant-turn-1"),
+            _synth_final_event(2, request_id="tts-1", assistant_turn_id="assistant-turn-1"),
+            _synth_event(0, request_id="tts-2", assistant_turn_id="assistant-turn-1"),
+            _synth_final_event(1, request_id="tts-2", assistant_turn_id="assistant-turn-1"),
+            {"type": "STOP"},
+        ]
+    )
+
+    summary = run_playback_queue_events(fake_node, _config())
+    audio_chunks, audio_finals, playback_states, playback_done, _output_ids = _decode_outputs(
+        fake_node
+    )
+
+    assert summary.synthesized_audio_chunks == 3
+    assert summary.synthesized_audio_finals == 2
+    assert [chunk.seq for chunk in audio_chunks] == [0, 1]
+    assert [final.seq for final in audio_finals] == [1, 2]
+    assert [state.state for state in playback_states] == [
+        "queued",
+        "playing",
+        "stopped",
+        "queued",
+        "playing",
+        "completed",
+    ]
+    assert [(done.request_id, done.status) for done in playback_done] == [
+        ("tts-1", "stopped"),
+        ("tts-2", "completed"),
+    ]
 
 
 def test_playback_queue_pause_holds_audio_until_resume_without_drop() -> None:

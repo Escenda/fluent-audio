@@ -1,8 +1,8 @@
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import TranscriptDelta, TranscriptFinal, TranscriptPartial
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TranscriptDelta, TranscriptFinal, TranscriptPartial
+from fluent_dialogue_dora.dora import (
     DoraTranscriptMetadataError,
     DoraTranscriptStreamFinalMarkerError,
     decode_transcript_delta_from_dora,
@@ -15,7 +15,7 @@ from fluent_audio.dora import (
     validate_dora_transcript_metadata,
     validate_dora_transcript_stream_final_marker,
 )
-from fluent_audio_contracts.fluent_audio.v1.asr_pb2 import (
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1.asr_pb2 import (
     TranscriptDelta as PbTranscriptDelta,
     TranscriptFinal as PbTranscriptFinal,
     TranscriptPartial as PbTranscriptPartial,
@@ -40,9 +40,9 @@ def test_transcript_delta_roundtrips_through_dora_boundary() -> None:
     assert proto.text == "hello"
     assert metadata.kind == "delta"
     assert metadata.to_dora_metadata() == {
-        "fluent_audio_codec": "protobuf",
-        "fluent_audio_schema_version": "fluent_audio.v1",
-        "fluent_audio_message_type": PbTranscriptDelta.DESCRIPTOR.full_name,
+        "fluent_dialogue_dora_codec": "protobuf",
+        "fluent_dialogue_dora_schema_version": "fluent_dialogue_dora.v1",
+        "fluent_dialogue_dora_message_type": PbTranscriptDelta.DESCRIPTOR.full_name,
     }
 
 
@@ -178,9 +178,9 @@ def test_transcript_metadata_rejects_invalid_message_type() -> None:
     with pytest.raises(DoraTranscriptMetadataError, match="message type is invalid"):
         validate_dora_transcript_metadata(
             {
-                "fluent_audio_codec": "protobuf",
-                "fluent_audio_schema_version": "fluent_audio.v1",
-                "fluent_audio_message_type": "fluent_audio.v1.AudioFrame",
+                "fluent_dialogue_dora_codec": "protobuf",
+                "fluent_dialogue_dora_schema_version": "fluent_dialogue_dora.v1",
+                "fluent_dialogue_dora_message_type": "fluent_dialogue_dora.v1.AudioFrame",
             }
         )
 
@@ -196,7 +196,7 @@ def test_transcript_metadata_model_export_is_transport_frame() -> None:
 
     assert decoded.sample_index == 3200
     assert metadata.to_dora_metadata() == {
-        "fluent_audio_codec": "protobuf",
-        "fluent_audio_schema_version": "fluent_audio.v1",
-        "fluent_audio_message_type": TranscriptStreamFinal.DESCRIPTOR.full_name,
+        "fluent_dialogue_dora_codec": "protobuf",
+        "fluent_dialogue_dora_schema_version": "fluent_dialogue_dora.v1",
+        "fluent_dialogue_dora_message_type": TranscriptStreamFinal.DESCRIPTOR.full_name,
     }

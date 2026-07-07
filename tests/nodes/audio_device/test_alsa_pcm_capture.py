@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from fluent_audio.contracts import AudioFormat
+from fluent_dialogue_dora.contracts import AudioFormat
 from nodes.audio_device.alsa_pcm_capture.main import (
     AlsaPcmCaptureConfig,
     build_arecord_command,

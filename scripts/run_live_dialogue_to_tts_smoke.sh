@@ -15,23 +15,24 @@ if [[ "${MODE}" != "--run" && "${MODE}" != "--write-dataflow" ]]; then
   exit 64
 fi
 
-if [[ "${MODE}" == "--run" && "${FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN:-}" != "1" ]]; then
-  echo "live Codex turn not run: set FLUENT_AUDIO_ALLOW_LIVE_CODEX_TURN=1" >&2
+if [[ "${MODE}" == "--run" && "${FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN:-}" != "1" ]]; then
+  echo "live Codex turn not run: set FLUENT_DIALOGUE_DORA_ALLOW_LIVE_CODEX_TURN=1" >&2
   exit 64
 fi
 
 cd "${REPO_ROOT}"
 mkdir -p graphs/out artifacts/live_dialogue_to_tts
 
-CODEX_HOME_DIR="${FLUENT_AUDIO_CODEX_HOME:-${REPO_ROOT}/artifacts/codex_home/live_dialogue_to_tts}"
+CODEX_HOME_DIR="${FLUENT_DIALOGUE_DORA_CODEX_HOME:-${REPO_ROOT}/artifacts/codex_home/live_dialogue_to_tts}"
 mkdir -p "${CODEX_HOME_DIR}"
 export CODEX_HOME="${CODEX_HOME_DIR}"
 
-LIVE_DATAFLOW="${FLUENT_AUDIO_LIVE_DIALOGUE_TO_TTS_DATAFLOW:-graphs/out/live_dialogue_to_tts_smoke.local.yml}"
+LIVE_DATAFLOW="${FLUENT_DIALOGUE_DORA_LIVE_DIALOGUE_TO_TTS_DATAFLOW:-graphs/out/live_dialogue_to_tts_smoke.local.yml}"
 TTS_PYOPENJTALK_PORT="${TTS_PYOPENJTALK_PORT:-18084}"
-VLLM_BASE_URL="${FLUENT_AUDIO_VLLM_BASE_URL:-http://127.0.0.1:18080/v1}"
-VLLM_MODEL="${FLUENT_AUDIO_CODEX_MODEL:-qwen3-1.7b-codex}"
-VLLM_PROVIDER="${FLUENT_AUDIO_CODEX_MODEL_PROVIDER:-vllm_local}"
+VLLM_BASE_URL="${FLUENT_DIALOGUE_DORA_VLLM_BASE_URL:-http://127.0.0.1:18080/v1}"
+VLLM_MODEL="${FLUENT_DIALOGUE_DORA_CODEX_MODEL:-qwen3-1.7b-codex}"
+VLLM_PROVIDER="${FLUENT_DIALOGUE_DORA_CODEX_MODEL_PROVIDER:-vllm_local}"
+VLLM_WIRE_API="${FLUENT_DIALOGUE_DORA_CODEX_WIRE_API:-responses}"
 export VLLM_API_KEY="${VLLM_API_KEY:-dummy}"
 
 TTS_SERVER_PID=""
@@ -42,7 +43,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python3 - "${LIVE_DATAFLOW}" "${REPO_ROOT}" "${VLLM_BASE_URL}" "${VLLM_MODEL}" "${VLLM_PROVIDER}" "${TTS_PYOPENJTALK_PORT}" <<'PY'
+python3 - "${LIVE_DATAFLOW}" "${REPO_ROOT}" "${VLLM_BASE_URL}" "${VLLM_MODEL}" "${VLLM_PROVIDER}" "${VLLM_WIRE_API}" "${TTS_PYOPENJTALK_PORT}" <<'PY'
 import json
 import os
 import sys
@@ -73,17 +74,18 @@ repo_root = Path(sys.argv[2])
 vllm_base_url = sys.argv[3]
 vllm_model = sys.argv[4]
 vllm_provider = sys.argv[5]
-tts_port = sys.argv[6]
+vllm_wire_api = sys.argv[6]
+tts_port = sys.argv[7]
 
-session_id = os.environ.get("FLUENT_AUDIO_LIVE_DIALOGUE_SESSION_ID", "live-dialogue-tts-smoke")
-user_turn_id = os.environ.get("FLUENT_AUDIO_LIVE_DIALOGUE_USER_TURN_ID", "user-turn-live-dialogue-tts")
+session_id = os.environ.get("FLUENT_DIALOGUE_DORA_LIVE_DIALOGUE_SESSION_ID", "live-dialogue-tts-smoke")
+user_turn_id = os.environ.get("FLUENT_DIALOGUE_DORA_LIVE_DIALOGUE_USER_TURN_ID", "user-turn-live-dialogue-tts")
 assistant_turn_id = "assistant-turn-000000"
-expected_text = os.environ.get("FLUENT_AUDIO_LIVE_DIALOGUE_EXPECTED_TEXT", "こんにちは。")
+expected_text = os.environ.get("FLUENT_DIALOGUE_DORA_LIVE_DIALOGUE_EXPECTED_TEXT", "こんにちは。")
 transcript_text = os.environ.get(
-    "FLUENT_AUDIO_LIVE_DIALOGUE_TRANSCRIPT_TEXT",
+    "FLUENT_DIALOGUE_DORA_LIVE_DIALOGUE_TRANSCRIPT_TEXT",
     "/no_think Respond with this exact Japanese sentence only: こんにちは。",
 )
-cwd = os.environ.get("FLUENT_AUDIO_CODEX_CWD", "/tmp/fluent-audio-codex-empty-cwd")
+cwd = os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_CWD", "/tmp/fluent-dialogue-dora-codex-empty-cwd")
 Path(cwd).mkdir(parents=True, exist_ok=True)
 
 transcript_text_file = write_payload(output_path, "transcript_text.txt", transcript_text)
@@ -136,7 +138,7 @@ command_file = write_payload(
             "-c",
             f"model_providers.{vllm_provider}.env_key=\"VLLM_API_KEY\"",
             "-c",
-            f"model_providers.{vllm_provider}.wire_api=\"responses\"",
+            f"model_providers.{vllm_provider}.wire_api={json.dumps(vllm_wire_api)}",
         ]
     )
     + "\n",
@@ -146,17 +148,17 @@ codex_args = [
     "../../nodes/dialogue_engine/codex_app_server/main.py",
     "--dora",
     "--timeout-seconds",
-    os.environ.get("FLUENT_AUDIO_CODEX_TIMEOUT_SECONDS", "180"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_TIMEOUT_SECONDS", "180"),
     "--approval-response-timeout-seconds",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_TIMEOUT_SECONDS", "10"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_TIMEOUT_SECONDS", "10"),
     "--cwd",
     cwd,
     "--sandbox",
-    os.environ.get("FLUENT_AUDIO_CODEX_SANDBOX", "read-only"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_SANDBOX", "read-only"),
     "--approval-policy",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVAL_POLICY", "never"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVAL_POLICY", "never"),
     "--approvals-reviewer",
-    os.environ.get("FLUENT_AUDIO_CODEX_APPROVALS_REVIEWER", "user"),
+    os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_APPROVALS_REVIEWER", "user"),
     "--model",
     vllm_model,
     "--model-provider",
@@ -251,7 +253,7 @@ lines = [
         "--agent-turn-id",
         assistant_turn_id,
         "--expected-min-text-deltas",
-        os.environ.get("FLUENT_AUDIO_CODEX_EXPECTED_MIN_TEXT_DELTAS", "1"),
+        os.environ.get("FLUENT_DIALOGUE_DORA_CODEX_EXPECTED_MIN_TEXT_DELTAS", "1"),
         "--expected-approval-requests",
         "0",
         "--expected-tool-events",

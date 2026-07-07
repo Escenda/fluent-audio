@@ -4,8 +4,8 @@ import pytest
 import pyarrow as pa
 from pydantic import ValidationError
 
-from fluent_audio.contracts import AudioChunk, AudioChunkContinuityError, AudioFormat
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioChunk, AudioChunkContinuityError, AudioFormat
+from fluent_dialogue_dora.dora import (
     DoraAudioMetadataError,
     decode_audio_chunk_from_dora,
     encode_audio_chunk_for_dora,
@@ -13,7 +13,7 @@ from fluent_audio.dora import (
     validate_dora_audio_final_marker,
     validate_dora_audio_metadata,
 )
-from fluent_audio.offline import (
+from fluent_dialogue_dora.offline import (
     RawPcmChunkValidationError,
     RawPcmEmptyInputError,
     RawPcmFileNotFoundError,
@@ -435,9 +435,9 @@ def test_dora_audio_encode_decode_roundtrip() -> None:
     assert payload.type == pa.uint8()
     assert decoded == chunk
     assert metadata.to_dora_metadata() == {
-        "fluent_audio_codec": "protobuf",
-        "fluent_audio_schema_version": "fluent_audio.v1",
-        "fluent_audio_message_type": "fluent_audio.v1.AudioFrame",
+        "fluent_dialogue_dora_codec": "protobuf",
+        "fluent_dialogue_dora_schema_version": "fluent_dialogue_dora.v1",
+        "fluent_dialogue_dora_message_type": "fluent_dialogue_dora.v1.AudioFrame",
     }
 
 

@@ -17,8 +17,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import AudioChunk, AudioFormat
-from fluent_audio.dora import encode_audio_chunk_for_dora, encode_audio_final_marker_for_dora
+from fluent_dialogue_dora.contracts import AudioChunk, AudioFormat
+from fluent_dialogue_dora.dora import encode_audio_chunk_for_dora, encode_audio_final_marker_for_dora
 
 DORA_FINAL_MARKER_DRAIN_SECONDS = 0.1
 ARECORD_BINARY = "arecord"

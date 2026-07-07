@@ -1,8 +1,8 @@
 import pyarrow as pa
 import pytest
 
-from fluent_audio.contracts import TurnEvent
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TurnEvent
+from fluent_dialogue_dora.dora import (
     DoraTurnFinalMarkerError,
     DoraTurnMetadataError,
     decode_turn_event_from_dora,
@@ -10,7 +10,7 @@ from fluent_audio.dora import (
     encode_turn_final_marker_for_dora,
     validate_dora_turn_final_marker,
 )
-from fluent_audio_contracts.fluent_audio.v1.vad_pb2 import (
+from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1.vad_pb2 import (
     TURN_STATE_STARTED,
     TurnEvent as PbTurnEvent,
 )
@@ -39,9 +39,9 @@ def test_turn_event_dora_roundtrips_as_protobuf_payload() -> None:
     assert proto.session_id == "session-1"
     assert metadata.final is False
     assert metadata.to_dora_metadata() == {
-        "fluent_audio_codec": "protobuf",
-        "fluent_audio_schema_version": "fluent_audio.v1",
-        "fluent_audio_message_type": PbTurnEvent.DESCRIPTOR.full_name,
+        "fluent_dialogue_dora_codec": "protobuf",
+        "fluent_dialogue_dora_schema_version": "fluent_dialogue_dora.v1",
+        "fluent_dialogue_dora_message_type": PbTurnEvent.DESCRIPTOR.full_name,
     }
     assert decoded == event
 
@@ -83,7 +83,7 @@ def test_turn_dora_rejects_missing_transport_metadata() -> None:
     event = _turn_event()
     payload, metadata = encode_turn_event_for_dora(event)
     missing_type_metadata = metadata.to_dora_metadata()
-    del missing_type_metadata["fluent_audio_message_type"]
+    del missing_type_metadata["fluent_dialogue_dora_message_type"]
 
     with pytest.raises(DoraTurnMetadataError, match="metadata is invalid"):
         decode_turn_event_from_dora(payload, None)

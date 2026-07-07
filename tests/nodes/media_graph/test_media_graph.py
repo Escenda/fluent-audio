@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from fluent_audio.contracts import AudioChunk, AudioFormat, require_contiguous_audio_chunks
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import AudioChunk, AudioFormat, require_contiguous_audio_chunks
+from fluent_dialogue_dora.dora import (
     decode_audio_chunk_from_dora,
     encode_audio_chunk_for_dora,
     encode_audio_final_marker_for_dora,

@@ -1,4 +1,4 @@
-"""Generate Python protobuf bindings for fluent-audio contracts."""
+"""Generate Python protobuf bindings for fluent-dialogue-dora contracts."""
 
 from pathlib import Path
 
@@ -7,22 +7,23 @@ from grpc_tools import protoc
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTO_ROOT = REPO_ROOT / "contracts" / "proto"
-PYTHON_PACKAGE_ROOT = REPO_ROOT / "contracts" / "python" / "src" / "fluent_audio_contracts"
+PYTHON_PACKAGE_ROOT = REPO_ROOT / "contracts" / "python" / "src" / "fluent_dialogue_dora_contracts"
 GRPC_TOOLS_PROTO_ROOT = Path(grpc_tools.__file__).resolve().parent / "_proto"
 PROTO_FILES = (
-    PROTO_ROOT / "fluent_audio" / "v1" / "audio.proto",
-    PROTO_ROOT / "fluent_audio" / "v1" / "vad.proto",
-    PROTO_ROOT / "fluent_audio" / "v1" / "asr.proto",
-    PROTO_ROOT / "fluent_audio" / "v1" / "dialogue.proto",
-    PROTO_ROOT / "fluent_audio" / "v1" / "tts.proto",
-    PROTO_ROOT / "fluent_audio" / "v1" / "session.proto",
-    PROTO_ROOT / "fluent_audio" / "v1" / "playback.proto",
-    PROTO_ROOT / "fluent_audio" / "v1" / "diagnostics.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "audio.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "vad.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "asr.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "dialogue.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "tts.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "session.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "playback.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "barge_in.proto",
+    PROTO_ROOT / "fluent_dialogue_dora" / "v1" / "diagnostics.proto",
 )
 
 
 def _remove_generated_files() -> None:
-    generated_root = PYTHON_PACKAGE_ROOT / "fluent_audio" / "v1"
+    generated_root = PYTHON_PACKAGE_ROOT / "fluent_dialogue_dora" / "v1"
     for path in generated_root.glob("*_pb2.py"):
         path.unlink()
     for path in generated_root.glob("*_pb2.pyi"):
@@ -32,23 +33,23 @@ def _remove_generated_files() -> None:
 def _ensure_init_files() -> None:
     package_paths = (
         PYTHON_PACKAGE_ROOT,
-        PYTHON_PACKAGE_ROOT / "fluent_audio",
-        PYTHON_PACKAGE_ROOT / "fluent_audio" / "v1",
+        PYTHON_PACKAGE_ROOT / "fluent_dialogue_dora",
+        PYTHON_PACKAGE_ROOT / "fluent_dialogue_dora" / "v1",
     )
     for path in package_paths:
         path.mkdir(parents=True, exist_ok=True)
         init_file = path / "__init__.py"
         if not init_file.exists():
-            init_file.write_text('"""Generated fluent-audio protobuf package."""\n')
+            init_file.write_text('"""Generated fluent-dialogue-dora protobuf package."""\n')
 
 
 def _rewrite_generated_imports() -> None:
-    generated_root = PYTHON_PACKAGE_ROOT / "fluent_audio" / "v1"
+    generated_root = PYTHON_PACKAGE_ROOT / "fluent_dialogue_dora" / "v1"
     for path in tuple(generated_root.glob("*_pb2.py")) + tuple(generated_root.glob("*_pb2.pyi")):
         text = path.read_text()
         text = text.replace(
-            "from fluent_audio.v1 import ",
-            "from fluent_audio_contracts.fluent_audio.v1 import ",
+            "from fluent_dialogue_dora.v1 import ",
+            "from fluent_dialogue_dora_contracts.fluent_dialogue_dora.v1 import ",
         )
         path.write_text(text)
 

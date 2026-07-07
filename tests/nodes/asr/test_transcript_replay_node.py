@@ -1,7 +1,7 @@
 import argparse
 
-from fluent_audio.contracts import TranscriptFinal
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TranscriptFinal
+from fluent_dialogue_dora.dora import (
     decode_transcript_final_from_dora,
     validate_dora_transcript_metadata,
     validate_dora_transcript_stream_final_marker,

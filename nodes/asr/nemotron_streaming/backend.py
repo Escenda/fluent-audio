@@ -9,7 +9,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from fluent_audio.contracts import (
+from fluent_dialogue_dora.contracts import (
     AsrCancel,
     AsrStart,
     AsrStop,

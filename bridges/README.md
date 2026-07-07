@@ -1,6 +1,6 @@
 # Bridges
 
-Bridges connect the fluent-audio core runtime to external ecosystems.
+Bridges connect the fluent-dialogue-dora core runtime to external ecosystems.
 
 - `ros2_bridge` projects core state, commands, events, and selected data taps to
   ROS2.

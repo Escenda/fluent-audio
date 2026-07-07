@@ -14,8 +14,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fluent_audio.contracts import TranscriptFinal, TranscriptPartial
-from fluent_audio.dora import (
+from fluent_dialogue_dora.contracts import TranscriptFinal, TranscriptPartial
+from fluent_dialogue_dora.dora import (
     decode_transcript_final_from_dora,
     decode_transcript_partial_from_dora,
     validate_dora_transcript_metadata,

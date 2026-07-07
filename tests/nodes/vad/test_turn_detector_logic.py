@@ -1,6 +1,6 @@
 import pytest
 
-from fluent_audio.contracts import VoiceActivityEvent, VoiceActivityState
+from fluent_dialogue_dora.contracts import VoiceActivityEvent, VoiceActivityState
 from nodes.vad.turn_detector.logic import (
     TurnDetectorConfig,
     TurnDetectorError,

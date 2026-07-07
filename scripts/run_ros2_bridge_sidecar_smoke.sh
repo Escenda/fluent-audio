@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SMOKE_ROOT="${FLUENT_AUDIO_ROS2_SMOKE_ROOT:-${REPO_ROOT}/artifacts/ros2_bridge_sidecar_smoke}"
+SMOKE_ROOT="${FLUENT_DIALOGUE_DORA_ROS2_SMOKE_ROOT:-${REPO_ROOT}/artifacts/ros2_bridge_sidecar_smoke}"
 
 if ! command -v ros2 >/dev/null; then
   echo "missing required command: ros2" >&2
@@ -22,7 +22,7 @@ PY
 
 mkdir -p "${SMOKE_ROOT}"
 colcon --log-base "${SMOKE_ROOT}/log" build \
-  --base-paths "${REPO_ROOT}/bridges/ros2_bridge/fluent_audio_interfaces" \
+  --base-paths "${REPO_ROOT}/bridges/ros2_bridge/fluent_dialogue_dora_interfaces" \
   --build-base "${SMOKE_ROOT}/build" \
   --install-base "${SMOKE_ROOT}/install"
 
@@ -37,15 +37,15 @@ from dataclasses import dataclass
 
 import pyarrow as pa
 import rclpy
-from fluent_audio_interfaces.msg import AgentCancelRequest
-from fluent_audio_interfaces.msg import AsrControl
-from fluent_audio_interfaces.msg import PlaybackCommand
-from fluent_audio_interfaces.msg import VoiceSessionEvent as VoiceSessionEventMsg
+from fluent_dialogue_dora_interfaces.msg import AgentCancelRequest
+from fluent_dialogue_dora_interfaces.msg import AsrControl
+from fluent_dialogue_dora_interfaces.msg import PlaybackCommand
+from fluent_dialogue_dora_interfaces.msg import VoiceSessionEvent as VoiceSessionEventMsg
 
-from fluent_audio.dora import DoraMetadataMutableMapping
-from fluent_audio.dora import decode_agent_cancel_request_from_dora
-from fluent_audio.dora import decode_asr_control_from_dora
-from fluent_audio.dora import decode_playback_command_from_dora
+from fluent_dialogue_dora.dora import DoraMetadataMutableMapping
+from fluent_dialogue_dora.dora import decode_agent_cancel_request_from_dora
+from fluent_dialogue_dora.dora import decode_asr_control_from_dora
+from fluent_dialogue_dora.dora import decode_playback_command_from_dora
 from bridges.ros2_bridge.ingress import Ros2BridgeIngressOutputId
 from bridges.ros2_bridge.messages import Ros2Header
 from bridges.ros2_bridge.messages import Ros2Time
@@ -87,30 +87,30 @@ parsed = parser.parse_args(["--dora"])
 
 rclpy.init()
 dora_node = CapturingDoraNode()
-sidecar_node = rclpy.create_node("fluent_audio_sidecar_smoke_sidecar")
-peer_node = rclpy.create_node("fluent_audio_sidecar_smoke_peer")
+sidecar_node = rclpy.create_node("fluent_dialogue_dora_sidecar_smoke_sidecar")
+peer_node = rclpy.create_node("fluent_dialogue_dora_sidecar_smoke_peer")
 sidecar = Ros2BridgeSidecar(dora_node, sidecar_node, Ros2BridgeSidecarConfig())
 received_sessions: list[VoiceSessionEventMsg] = []
 peer_node.create_subscription(
     VoiceSessionEventMsg,
-    "/fluent_audio/session",
+    "/fluent_dialogue_dora/session",
     lambda message: received_sessions.append(message),
     10,
 )
 
 cancel_publisher = peer_node.create_publisher(
     AgentCancelRequest,
-    "/fluent_audio/in/agent_cancel",
+    "/fluent_dialogue_dora/in/agent_cancel",
     10,
 )
 asr_control_publisher = peer_node.create_publisher(
     AsrControl,
-    "/fluent_audio/in/asr_control",
+    "/fluent_dialogue_dora/in/asr_control",
     10,
 )
 playback_command_publisher = peer_node.create_publisher(
     PlaybackCommand,
-    "/fluent_audio/in/playback_command",
+    "/fluent_dialogue_dora/in/playback_command",
     10,
 )
 
@@ -134,7 +134,7 @@ def spin_until_session_publisher_ready() -> None:
     while time.monotonic() < deadline:
         rclpy.spin_once(sidecar_node, timeout_sec=0.02)
         rclpy.spin_once(peer_node, timeout_sec=0.02)
-        if peer_node.count_publishers("/fluent_audio/session") > 0:
+        if peer_node.count_publishers("/fluent_dialogue_dora/session") > 0:
             return
     raise RuntimeError("ROS2 session publisher was not discovered")
 
